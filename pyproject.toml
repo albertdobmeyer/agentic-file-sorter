@@ -1,0 +1,44 @@
+[build-system]
+requires = ["setuptools>=68.0"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "agentic-file-sorter"
+version = "1.3.0"
+description = "Secure semantic naming and topic sorting for downloaded media. Agent-first, local Ollama models."
+readme = "README.md"
+license = {text = "MIT"}
+requires-python = ">=3.10"
+authors = [{name = "Albert K.", email = "albert@akd-automation.com"}]
+keywords = [
+    "file-organizer", "ollama", "computer-vision", "semantic-naming",
+    "agentic", "claude-code", "cli-tools", "local-llm",
+]
+classifiers = [
+    "Development Status :: 4 - Beta",
+    "Intended Audience :: Developers",
+    "License :: OSI Approved :: MIT License",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Topic :: Utilities",
+    "Topic :: Multimedia :: Graphics",
+]
+dependencies = [
+    "Pillow>=10.0",
+    "requests>=2.28",
+]
+
+[project.scripts]
+afs = "afs.cli:main"
+
+[project.urls]
+Homepage = "https://github.com/albertdobmeyer/agentic-file-sorter"
+Documentation = "https://albertdobmeyer.github.io/agentic-file-sorter/"
+Repository = "https://github.com/albertdobmeyer/agentic-file-sorter"
+Issues = "https://github.com/albertdobmeyer/agentic-file-sorter/issues"
+Changelog = "https://github.com/albertdobmeyer/agentic-file-sorter/blob/main/CHANGELOG.md"
+
+[tool.setuptools.packages.find]
+include = ["afs*"]
