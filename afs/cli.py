@@ -223,6 +223,24 @@ def _print_human(event: dict):
         print(f"  Step 2 done: {folders_created} folders assigned")
         for folder, count in sorted(assignments.items()):
             print(f"    {folder}: {count} files")
+    elif ev == "step2a-start":
+        count = event.get("folders", 0)
+        print(f"\n  Step 2a: Consolidating {count} folders...")
+    elif ev == "step2a-done":
+        merges = event.get("merges", 0)
+        eliminated = event.get("folders_eliminated", 0)
+        resort = event.get("resort_files", 0)
+        consolidated = event.get("consolidated_folders", [])
+        if merges:
+            print(f"  Step 2a done: {merges} merges, {eliminated} folders eliminated, {resort} files queued for re-sort")
+            print(f"    Consolidated to {len(consolidated)} folders: {', '.join(consolidated[:15])}")
+            if len(consolidated) > 15:
+                print(f"    ... and {len(consolidated) - 15} more")
+        else:
+            print(f"  Step 2a: No consolidation needed ({len(consolidated)} folders)")
+    elif ev == "resort-start":
+        count = event.get("files", 0)
+        print(f"\n  Re-sorting {count} files from junk folders...")
     elif ev == "step2-error":
         err_type = event.get("error_type", "unknown")
         print(f"  Step 2 failed [{err_type}]: {event.get('error', '')}")

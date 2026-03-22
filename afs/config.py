@@ -9,7 +9,7 @@ import os
 import pathlib
 
 
-VERSION = "1.1.0"
+VERSION = "1.2.0"
 
 # Project root is one level above afs/ package
 PROJECT_ROOT = pathlib.Path(__file__).parent.parent

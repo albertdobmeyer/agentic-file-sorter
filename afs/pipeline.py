@@ -1,7 +1,8 @@
-"""Orchestrator — two-step pipeline per the constitution.
+"""Orchestrator — three-step pipeline per the constitution.
 
-Step 1 (per-file, vision model): classify tier → CDR → preview → vision → semantic name
-Step 2 (entire batch, reasoning model): manifest → batch folder assignment → moves
+Step 1  (per-file, vision model):  classify tier → CDR → preview → vision → semantic name
+Step 2a (one call, reasoning model): holistic folder consolidation → merge map → execute merges
+Step 2b (chunked, reasoning model): batch file assignment → moves
 """
 
 import datetime
@@ -25,8 +26,9 @@ from afs.analyze import (
     ERR_FILE_READ,
 )
 from afs.naming import deduplicate_path
-from afs.sorting import normalize_topic, get_destination, move_file
+from afs.sorting import normalize_topic, get_destination, move_file, scan_existing_folders
 from afs.batch_sort import step2_batch_sort, _single_call
+from afs.consolidate import consolidate_folders, execute_merges, RESORT_SENTINEL
 
 
 def _warm_model(model: str, config: dict | None = None, on_event: Callable | None = None):
@@ -294,10 +296,118 @@ def process_batch(
                         config=cfg, skipped=skipped, dry_run=dry_run,
                         step="naming", progress=(i, len(new_files)))
 
-    # === Step 2: Batch sort (reasoning model) ===
+    # === Step 2a: Folder consolidation (reasoning model, one call) ===
+    consolidation_result = None
+    prior_folders = _get_prior_folders(prior_files)
+    disk_folders = scan_existing_folders(output_dir)
+    all_known_folders = sorted(set(prior_folders + disk_folders))
+
+    if all_known_folders:
+        _warm_model(text_model, config, on_event)
+
+        if on_event:
+            on_event({
+                "event": "step2a-start",
+                "folders": len(all_known_folders),
+            })
+
+        consolidation_result = consolidate_folders(
+            output_dir, all_known_folders, config=cfg, on_event=on_event,
+        )
+
+        if consolidation_result and consolidation_result.merge_map:
+            merge_report = execute_merges(
+                consolidation_result.merge_map, output_dir,
+                dry_run=dry_run, on_event=on_event,
+            )
+            consolidation_result.files_moved = merge_report.files_moved
+            consolidation_result.resort_files = merge_report.resort_files
+
+            # Update prior manifest entries for merged folders
+            _update_manifest_for_merges(prior_files, consolidation_result.merge_map)
+
+            # Resort files from junk folders go through Step 1
+            if consolidation_result.resort_files and not dry_run:
+                if on_event:
+                    on_event({
+                        "event": "resort-start",
+                        "files": len(consolidation_result.resort_files),
+                    })
+                _warm_model(vision_model, config, on_event)
+                for ri, rpath in enumerate(consolidation_result.resort_files, 1):
+                    try:
+                        rresult = process_file(
+                            rpath, output_dir,
+                            dry_run=dry_run,
+                            sanitize_images=sanitize_images,
+                            convert_webp=convert_webp,
+                            config=config,
+                        )
+                    except Exception as e:
+                        rresult = FileResult(source=str(rpath), method="filtered")
+                        rresult.status = "error"
+                        rresult.error = f"unhandled: {type(e).__name__}: {e}"
+                        rresult.error_type = "unhandled"
+                        rresult.elapsed_ms = 0
+
+                    batch.results.append(rresult)
+                    batch.total += 1
+                    if rresult.status == "named":
+                        named_results.append(rresult)
+                    elif rresult.status == "error":
+                        batch.errors += 1
+                    if rresult.method == "filtered":
+                        batch.filtered += 1
+                        if rresult.status in ("moved", "dry-run"):
+                            batch.moved += 1
+
+                    if on_event:
+                        event = {
+                            "event": "progress",
+                            "index": ri,
+                            "total": len(consolidation_result.resort_files),
+                            "file": rpath.name,
+                            "status": rresult.status,
+                            "dest": rresult.dest,
+                            "topic": rresult.topic,
+                            "keywords": rresult.keywords,
+                            "confidence": rresult.confidence,
+                            "method": rresult.method,
+                            "tier": rresult.tier,
+                            "ms": rresult.elapsed_ms,
+                        }
+                        if rresult.identified:
+                            event["identified"] = rresult.identified
+                        if rresult.error:
+                            event["error"] = rresult.error
+                            event["error_type"] = rresult.error_type
+                        on_event(event)
+
+            if on_event:
+                on_event({
+                    "event": "step2a-done",
+                    "merges": len(consolidation_result.merge_map),
+                    "folders_eliminated": consolidation_result.folders_eliminated,
+                    "resort_files": len(consolidation_result.resort_files),
+                    "consolidated_folders": consolidation_result.consolidated_folders,
+                })
+
+            # Use consolidated folder list for Step 2b
+            prior_folders = consolidation_result.consolidated_folders
+        else:
+            if on_event:
+                on_event({
+                    "event": "step2a-done",
+                    "merges": 0,
+                    "folders_eliminated": 0,
+                    "resort_files": 0,
+                    "consolidated_folders": all_known_folders,
+                })
+            prior_folders = all_known_folders
+
+    # === Step 2b: Batch sort — file assignment (reasoning model, chunked) ===
     if named_results:
         _warm_model(text_model, config, on_event)
-        prior_folders = _get_prior_folders(prior_files)
 
         chunks = (len(named_results) + chunk_size - 1) // chunk_size
         if on_event:
@@ -403,8 +513,20 @@ def process_batch(
             "ms": batch.elapsed_ms,
         })
 
+    # Build consolidation summary for manifest
+    consol_data = None
+    if consolidation_result and consolidation_result.merge_map:
+        consol_data = {
+            "merge_map": consolidation_result.merge_map,
+            "folders_before": len(all_known_folders),
+            "folders_after": len(consolidation_result.consolidated_folders),
+            "files_moved": consolidation_result.files_moved,
+            "files_resorted": len(consolidation_result.resort_files),
+        }
+
     _write_manifest(batch, input_dir, output_dir, sanitize_images, prior_files,
-                    config=cfg, skipped=skipped, dry_run=dry_run, step="complete")
+                    config=cfg, skipped=skipped, dry_run=dry_run, step="complete",
+                    consolidation=consol_data)
 
     return batch
 
@@ -468,6 +590,19 @@ def _get_prior_folders(prior_files: dict[str, dict]) -> list[str]:
     return sorted(folders)
 
 
+def _update_manifest_for_merges(
+    prior_files: dict[str, dict],
+    merge_map: dict[str, str],
+):
+    """Update prior manifest entries when folders are merged during consolidation."""
+    for entry in prior_files.values():
+        old_folder = entry.get("folder", "")
+        if old_folder in merge_map:
+            new_folder = merge_map[old_folder]
+            if new_folder != RESORT_SENTINEL:
+                entry["folder"] = new_folder
+
+
 # --- Manifest ---
 
 
@@ -482,6 +617,7 @@ def _write_manifest(
     dry_run: bool = False,
     step: str = "complete",
     progress: tuple[int, int] | None = None,
+    consolidation: dict | None = None,
 ):
     """Write .afs-manifest.json — the factory clipboard and agent handoff artifact."""
     cfg = config or {}
@@ -589,6 +725,9 @@ def _write_manifest(
         "folders": folder_summary,
         "errors": errors,
     }
+
+    if consolidation:
+        manifest["consolidation"] = consolidation
 
     manifest_path = output_dir / ".afs-manifest.json"
     manifest_path.parent.mkdir(parents=True, exist_ok=True)
