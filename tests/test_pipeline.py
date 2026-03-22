@@ -755,7 +755,7 @@ class TestProcessBatch:
             assert start_event["skipped"] == 1
 
 
-# --- Event handlers in afs-lite.py ---
+# --- Event handlers in afs/cli.py ---
 
 
 class TestEventHandlers:

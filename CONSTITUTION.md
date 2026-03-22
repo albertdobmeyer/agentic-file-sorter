@@ -1,6 +1,6 @@
-# AFS Lite — Constitution
+# AFS — Constitution
 
-**Agentic File Sorter Lite: Secure Semantic Naming for Downloaded Media**
+**Agentic File Sorter: Secure Semantic Naming for Downloaded Media**
 
 Version: 1.1 | Date: 2026-03-18 | Author: Albert K. | AKD Automation Solutions
 
@@ -8,7 +8,7 @@ Status: RATIFIED — All implementation decisions must trace back to this docume
 
 ## Preamble
 
-The original SecureSemanticSorter grew to 173 files and 6 packages before collapsing under its own weight. AFS Lite is the rebuild — stripped to its core purpose: take chaotic downloaded files (primarily memes and media), give them descriptive semantic names, and sort them into topic folders.
+The original SecureSemanticSorter grew to 173 files and 6 packages before collapsing under its own weight. AFS is the rebuild — stripped to its core purpose: take chaotic downloaded files (primarily memes and media), give them descriptive semantic names, and sort them into topic folders.
 
 Every feature, every line of code, every dependency must justify itself against this document.
 
@@ -16,7 +16,7 @@ Every feature, every line of code, every dependency must justify itself against 
 
 ### Axiom 1: AGENTIC
 
-AFS Lite is a power tool for Claude Code within the Agentic 5-Drive System (A5DS) — a local orchestration suite where Claude Code drives Ollama models, scripts, and workflows. It is one of many custom tools built to save Claude Code tokens and time by offloading procedural work to local models and well-designed scripts.
+AFS is a power tool for Claude Code within the Agentic 5-Drive System (A5DS) — a local orchestration suite where Claude Code drives Ollama models, scripts, and workflows. It is one of many custom tools built to save Claude Code tokens and time by offloading procedural work to local models and well-designed scripts.
 
 - CLAUDE.md is the entry point and operational manual
 - Primary interface is structured JSON on stdout (NDJSON events during processing, manifest after completion)
@@ -57,7 +57,7 @@ The product is the name. The entire pipeline — CDR re-rendering, frame extract
 
 ### Axiom 4: SECURE
 
-Files entering AFS Lite are untrusted — downloaded from the internet. The app handles them indirectly, never opening them in external applications, never executing their content.
+Files entering AFS are untrusted — downloaded from the internet. The app handles them indirectly, never opening them in external applications, never executing their content.
 
 **The method — Content Disarm and Reconstruction (CDR):**
 
@@ -73,7 +73,7 @@ A representative frame is extracted as a temporary image for vision analysis. Th
 No analysis. No opening. No content inspection. Sorted directly into `filtered/{extension}/` by file extension. This is the safe default for anything the app doesn't understand visually.
 
 **What "secure" means here:**
-CDR is a property of the method, not a marketed feature. AFS Lite is not anti-malware software. It doesn't scan for viruses, detect threats, or score risk. It simply avoids the attack surface of opening untrusted files by working with pixel data and opaque byte moves.
+CDR is a property of the method, not a marketed feature. AFS is not anti-malware software. It doesn't scan for viruses, detect threats, or score risk. It simply avoids the attack surface of opening untrusted files by working with pixel data and opaque byte moves.
 
 ### Axiom 5: VISUAL-ONLY
 
@@ -221,4 +221,4 @@ This constitution can be amended. Amendments must:
 
 ## Lineage
 
-Supersedes all previous architecture documents for SecureSemanticSorter. Those remain as historical reference but do not govern implementation. AFS Lite starts clean.
+Supersedes all previous architecture documents for SecureSemanticSorter. Those remain as historical reference but do not govern implementation. AFS starts clean.

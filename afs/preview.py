@@ -1,4 +1,4 @@
-"""Preview generation and CDR (Content Disarm & Reconstruction) for AFS Lite.
+"""Preview generation and CDR (Content Disarm & Reconstruction) for AFS.
 
 Two public functions:
 - apply_cdr(): Re-render Tier 1 images via PIL, stripping non-pixel data

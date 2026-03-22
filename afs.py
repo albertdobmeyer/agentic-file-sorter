@@ -1,4 +1,4 @@
-"""Agentic File Sorter Lite — entry point."""
+"""Agentic File Sorter — entry point."""
 from afs.cli import main
 
 if __name__ == "__main__":
