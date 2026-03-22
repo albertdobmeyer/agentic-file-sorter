@@ -1,5 +1,9 @@
 # AFS -- Agentic File Sorter
 
+[![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
+[![Release](https://img.shields.io/github/v/release/albertdobmeyer/agentic-file-sorter)](https://github.com/albertdobmeyer/agentic-file-sorter/releases)
+[![Python 3.10+](https://img.shields.io/badge/python-3.10%2B-blue.svg)](https://python.org)
+
 **A local vision pipeline that turns chaotic download folders into semantically named, topic-organized files. Built to be invoked by CLI agents. Zero cloud tokens burned.**
 
 > **Using Claude Code?** Point it at this repo. It reads [CLAUDE.md](CLAUDE.md) automatically and knows how to set up, run, and monitor AFS -- no manual required.
@@ -110,8 +114,11 @@ pip install -r requirements.txt
 ollama pull llava:latest    # vision model
 ollama pull qwen3:8b        # reasoning model
 
+# Option C: Install as CLI tool (adds 'afs' command to PATH)
+pip install .
+
 # Verify everything works
-python afs.py status
+python afs.py status        # or just: afs status
 
 # Preview what would happen (no files moved)
 python afs.py process ~/Downloads --dry-run
@@ -152,6 +159,8 @@ IMG_20250312_073.jpg  ->  albert-tori-park-20250312-073.jpg
 ```
 
 Face identification only runs on detected photos when face samples exist. It uses the same vision model and Ollama endpoint -- zero new dependencies, zero new configuration.
+
+**Privacy note:** Face samples stay local -- they are never uploaded anywhere. The `faces/` directory is gitignored by default. Do not commit personal face images to a public repository.
 
 ### Re-running Face ID
 
