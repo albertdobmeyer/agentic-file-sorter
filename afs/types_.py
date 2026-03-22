@@ -1,4 +1,4 @@
-"""Shared types and tier classification for AFS Lite.
+"""Shared types and tier classification for AFS.
 
 Tier 1: Re-renderable images — CDR via PIL (decode pixels, write new file)
 Tier 2: Irreplaceable visual files — frame extraction, original kept as-is

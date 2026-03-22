@@ -1,9 +1,9 @@
-"""Agentic File Sorter Lite — CLI and event formatting.
+"""Agentic File Sorter — CLI and event formatting.
 
 Usage:
-    python afs-lite.py process <input_dir> [--output DIR] [--dry-run] [--force]
-    python afs-lite.py status
-    python afs-lite.py --json process <input_dir>
+    python afs.py process <input_dir> [--output DIR] [--dry-run] [--force]
+    python afs.py status
+    python afs.py --json process <input_dir>
 """
 
 import argparse
@@ -26,11 +26,11 @@ EXIT_ALL_FAILED = 3
 
 def main():
     parser = argparse.ArgumentParser(
-        prog="afs-lite",
-        description="Agentic File Sorter Lite — secure semantic naming for downloaded media",
+        prog="afs",
+        description="Agentic File Sorter — secure semantic naming for downloaded media",
     )
     parser.add_argument("--json", action="store_true", help="NDJSON output mode (one JSON object per line)")
-    parser.add_argument("--version", action="version", version=f"afs-lite {VERSION}")
+    parser.add_argument("--version", action="version", version=f"afs {VERSION}")
     sub = parser.add_subparsers(dest="command")
 
     # process command

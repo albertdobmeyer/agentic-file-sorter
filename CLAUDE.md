@@ -1,4 +1,4 @@
-# AFS Lite — Claude Context
+# AFS — Claude Context
 
 ## Mission
 
@@ -13,17 +13,17 @@ See `CONSTITUTION.md` — 5 axioms (AGENTIC, LITE, SEMANTIC, SECURE, VISUAL-ONLY
 ## Quick Reference
 
 ```bash
-python afs-lite.py status                              # Pre-flight: Ollama, models, ffmpeg
-python afs-lite.py status --json                       # JSON status for agent gating
-python afs-lite.py process <dir> --dry-run             # Preview without moving
-python afs-lite.py process <dir>                       # Sort files (CDR on)
-python afs-lite.py process <dir> --force               # Ignore prior manifest, reprocess all
-python afs-lite.py process <dir> --max-files 20        # Spot-check first 20 files
-python afs-lite.py process <dir> --no-sanitize         # Skip CDR re-rendering
-python afs-lite.py process <dir> --no-convert-webp     # Keep WebP as-is during CDR
-python afs-lite.py process <dir> --config /path/to.json # Alternate config file
-python afs-lite.py process <dir> -o <out> --json       # NDJSON mode for agents
-python afs-lite.py --version                           # Print version
+python afs.py status                              # Pre-flight: Ollama, models, ffmpeg
+python afs.py status --json                       # JSON status for agent gating
+python afs.py process <dir> --dry-run             # Preview without moving
+python afs.py process <dir>                       # Sort files (CDR on)
+python afs.py process <dir> --force               # Ignore prior manifest, reprocess all
+python afs.py process <dir> --max-files 20        # Spot-check first 20 files
+python afs.py process <dir> --no-sanitize         # Skip CDR re-rendering
+python afs.py process <dir> --no-convert-webp     # Keep WebP as-is during CDR
+python afs.py process <dir> --config /path/to.json # Alternate config file
+python afs.py process <dir> -o <out> --json       # NDJSON mode for agents
+python afs.py --version                           # Print version
 ```
 
 ## NDJSON Event Stream (`--json` mode)
@@ -126,7 +126,7 @@ TEXT_TIMEOUT=120
 
 ```
 agentic-file-sorter/
-├── afs-lite.py              Entry point (thin shim → afs.cli.main)
+├── afs.py              Entry point (thin shim → afs.cli.main)
 ├── afs/                     Source package
 │   ├── __init__.py
 │   ├── cli.py               CLI, event formatting, exit codes

@@ -1,4 +1,4 @@
-# AFS Lite — Agentic Optimization Report
+# AFS — Agentic Optimization Report
 
 **Date**: 2026-03-21
 **Auditor**: Claude Opus 4.6 (1M context)
@@ -10,7 +10,7 @@
 
 | File | Lines | Role |
 |------|-------|------|
-| `afs-lite.py` | 5 | Entry point shim |
+| `afs.py` | 5 | Entry point shim |
 | `afs/cli.py` | 213 | CLI, .env loading, event formatting |
 | `afs/pipeline.py` | 587 | Orchestrator, manifest, resort-awareness |
 | `afs/batch_sort.py` | 226 | Step 2: prompt, model call, chunking |
