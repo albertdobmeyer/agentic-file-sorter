@@ -5,9 +5,12 @@ Step 2a (one call, reasoning model): holistic folder consolidation → merge map
 Step 2b (chunked, reasoning model): batch file assignment → moves
 """
 
+import contextlib
+import ctypes
 import datetime
 import json
 import pathlib
+import platform
 import time
 import traceback
 from collections import defaultdict
@@ -29,6 +32,33 @@ from afs.naming import deduplicate_path
 from afs.sorting import normalize_topic, get_destination, move_file, scan_existing_folders
 from afs.batch_sort import step2_batch_sort, _single_call
 from afs.consolidate import consolidate_folders, execute_merges, RESORT_SENTINEL
+
+
+@contextlib.contextmanager
+def _prevent_sleep():
+    """Prevent OS sleep/hibernate during long-running processing.
+
+    Windows: SetThreadExecutionState tells the OS not to sleep.
+    Other platforms: no-op (graceful fallback).
+    """
+    if platform.system() == "Windows":
+        ES_CONTINUOUS = 0x80000000
+        ES_SYSTEM_REQUIRED = 0x00000001
+        try:
+            ctypes.windll.kernel32.SetThreadExecutionState(
+                ES_CONTINUOUS | ES_SYSTEM_REQUIRED
+            )
+        except Exception:
+            pass
+        try:
+            yield
+        finally:
+            try:
+                ctypes.windll.kernel32.SetThreadExecutionState(ES_CONTINUOUS)
+            except Exception:
+                pass
+    else:
+        yield
 
 
 def _warm_model(model: str, config: dict | None = None, on_event: Callable | None = None):
@@ -57,8 +87,11 @@ def process_file(
     sanitize_images: bool = True,
     convert_webp: bool = True,
     config: dict | None = None,
+    face_samples: dict[str, list[str]] | None = None,
 ) -> FileResult:
     """Step 1: Analyze and name a single file. No moves except Tier 3 and errors."""
+    from afs.photo import is_likely_photo, extract_photo_sequence
+
     start = time.time()
     result = FileResult(source=str(path))
 
@@ -70,8 +103,17 @@ def process_file(
         return _move_to_filtered(path, output_dir, dry_run, start)
 
     try:
+        # Photo detection: skip CDR for camera photos (preserves original bytes + EXIF)
+        is_photo = False
+        cfg = config or {}
+        skip_cdr_photos = cfg.get("processing", {}).get("skip_cdr_photos", True)
+        if tier == 1 and skip_cdr_photos:
+            is_photo = is_likely_photo(path, config)
+        result.photo_detected = is_photo
+
         # Tier 1: CDR (re-render via PIL, stripping non-pixel data)
-        if tier == 1 and sanitize_images:
+        # Skipped for detected photos — original bytes preserved
+        if tier == 1 and sanitize_images and not is_photo:
             result.original = path.name  # preserve pre-CDR filename
             path = apply_cdr(path, convert_webp=convert_webp)
             result.source = str(path)  # path may have changed (webp → jpg)
@@ -83,9 +125,11 @@ def process_file(
                                    "preview generation failed", "preview_failed")
 
         # Vision analysis (single retry on timeout)
-        analysis = analyze_vision(preview_path, filename_hint=path.stem, config=config)
+        analysis = analyze_vision(preview_path, filename_hint=path.stem,
+                                  config=config, photo_hint=is_photo)
         if analysis.get("error_type") == "model_timeout":
-            analysis = analyze_vision(preview_path, filename_hint=path.stem, config=config)
+            analysis = analyze_vision(preview_path, filename_hint=path.stem,
+                                      config=config, photo_hint=is_photo)
 
         if "error" in analysis:
             _cleanup(preview_path)
@@ -99,13 +143,31 @@ def process_file(
         identified = None
         result.method = "vision"
 
-        # Character identification (if analysis is generic)
-        if needs_identification(topic, keywords, confidence, config=config):
+        # Character identification (memes/cartoons — not photos)
+        if not is_photo and needs_identification(topic, keywords, confidence, config=config):
             char_name = identify_character(preview_path, config=config)
             if char_name:
                 identified = char_name
                 keywords = enhance_with_character(keywords, char_name)
                 confidence = max(confidence, 0.7)
+
+        # Face identification (photos only, when samples are available)
+        if is_photo and face_samples:
+            from afs.faces import identify_faces
+            matched_names = identify_faces(preview_path, face_samples, config=config)
+            if matched_names:
+                identified = ", ".join(matched_names)
+                for name in reversed(matched_names):
+                    if name.lower() not in [kw.lower() for kw in keywords]:
+                        keywords.insert(0, name.lower())
+                keywords = keywords[:5]
+                confidence = max(confidence, 0.8)
+
+        # Photo sequence preservation (append camera date/number as last keyword)
+        if is_photo:
+            seq = extract_photo_sequence(path.stem)
+            if seq and seq not in keywords:
+                keywords.append(seq)
 
         _cleanup(preview_path)
 
@@ -200,7 +262,26 @@ def process_batch(
     force: bool = False,
     max_files: int = 0,
 ) -> BatchResult:
-    """Two-step pipeline: Step 1 names all files, Step 2 sorts them into folders."""
+    """Three-step pipeline: Step 1 names files, Step 2a consolidates folders, Step 2b assigns."""
+    with _prevent_sleep():
+        return _process_batch_inner(
+            input_dir, output_dir, dry_run, sanitize_images, convert_webp,
+            on_event, config, force, max_files,
+        )
+
+
+def _process_batch_inner(
+    input_dir: pathlib.Path,
+    output_dir: pathlib.Path,
+    dry_run: bool,
+    sanitize_images: bool,
+    convert_webp: bool,
+    on_event: Callable[[dict], None] | None,
+    config: dict | None,
+    force: bool,
+    max_files: int,
+) -> BatchResult:
+    """Inner pipeline logic, runs inside _prevent_sleep() context."""
     cfg = config or {}
     models = cfg.get("models", {})
     vision_model = models.get("vision_model", "llava:latest")
@@ -215,6 +296,12 @@ def process_batch(
         prior_files, prior_timestamp = {}, ""
     else:
         prior_files, prior_timestamp = _load_prior_manifest(output_dir)
+
+    # Load face samples once (reused across all files)
+    face_samples: dict[str, list[str]] = {}
+    if cfg.get("processing", {}).get("identify_faces", True):
+        from afs.faces import load_face_samples
+        face_samples = load_face_samples(config=cfg)
 
     # Filter out already-sorted files
     new_files = []
@@ -248,6 +335,7 @@ def process_batch(
                 sanitize_images=sanitize_images,
                 convert_webp=convert_webp,
                 config=config,
+                face_samples=face_samples,
             )
         except Exception as e:
             result = FileResult(source=str(path), method="filtered")
@@ -286,6 +374,8 @@ def process_batch(
             }
             if result.identified:
                 event["identified"] = result.identified
+            if result.photo_detected:
+                event["photo_detected"] = True
             if result.error:
                 event["error"] = result.error
                 event["error_type"] = result.error_type
@@ -342,6 +432,7 @@ def process_batch(
                             sanitize_images=sanitize_images,
                             convert_webp=convert_webp,
                             config=config,
+                            face_samples=face_samples,
                         )
                     except Exception as e:
                         rresult = FileResult(source=str(rpath), method="filtered")
@@ -404,6 +495,26 @@ def process_batch(
                     "consolidated_folders": all_known_folders,
                 })
             prior_folders = all_known_folders
+
+    # === Photo flat sorting: rename in-place, skip Step 2b ===
+    photo_sorting = cfg.get("sorting", {}).get("photo_sorting", "flat")
+    if photo_sorting == "flat":
+        flat_photos = [r for r in named_results if r.photo_detected]
+        named_results = [r for r in named_results if not r.photo_detected]
+
+        from afs.naming import generate_name
+        for result in flat_photos:
+            source = pathlib.Path(result.source)
+            ext = source.suffix.lower()
+            semantic = generate_name(result.keywords, original_stem=source.stem)
+            dest = source.parent / f"{semantic}{ext}"
+            dest = deduplicate_path(dest)
+            moved = move_file(source, dest, dry_run=dry_run)
+            result.dest = str(dest)
+            result.status = "dry-run" if dry_run else ("moved" if moved else "renamed")
+            result.topic = "photos"
+            result.folder = "photos"
+            batch.moved += 1
 
     # === Step 2b: Batch sort — file assignment (reasoning model, chunked) ===
     if named_results:
@@ -531,6 +642,169 @@ def process_batch(
     return batch
 
 
+def reface_batch(
+    input_dir: pathlib.Path,
+    output_dir: pathlib.Path,
+    dry_run: bool = False,
+    config: dict | None = None,
+    on_event: Callable[[dict], None] | None = None,
+) -> BatchResult:
+    """Re-run face identification only — skip vision analysis, reuse manifest keywords.
+
+    Loads the prior manifest, re-runs identify_faces() on photos with updated
+    face samples, and renames files if the identification changed.
+    """
+    from afs.faces import load_face_samples, identify_faces, has_face_samples
+    from afs.preview import generate_preview
+    from afs.naming import generate_name
+
+    cfg = config or {}
+    start = time.time()
+    batch = BatchResult()
+
+    # Load prior manifest (required)
+    prior_files, prior_timestamp = _load_prior_manifest(output_dir)
+    if not prior_files:
+        if on_event:
+            on_event({"event": "error", "error": "No manifest found — run process first"})
+        return batch
+
+    # Load face samples (required)
+    face_samples = load_face_samples(config=cfg)
+    if not face_samples:
+        if on_event:
+            on_event({"event": "error", "error": "No face samples found in faces/ directory"})
+        return batch
+
+    # Filter to photo entries only
+    photo_entries = {name: entry for name, entry in prior_files.items()
+                     if entry.get("photo_detected")}
+
+    if on_event:
+        on_event({
+            "event": "start",
+            "total": len(photo_entries),
+            "skipped": len(prior_files) - len(photo_entries),
+            "input": str(input_dir),
+            "output": str(output_dir),
+        })
+
+    batch.total = len(photo_entries)
+    updated = 0
+
+    for i, (name, entry) in enumerate(sorted(photo_entries.items()), 1):
+        # Find the file on disk (may have been renamed)
+        file_name = entry.get("name", name)
+        folder = entry.get("folder", "")
+        if folder and folder != "photos":
+            file_path = output_dir / folder / file_name
+        else:
+            file_path = output_dir / file_name
+
+        # Try input dir if not found in output
+        if not file_path.exists():
+            file_path = input_dir / file_name
+        if not file_path.exists():
+            # Search recursively
+            matches = list(output_dir.rglob(file_name))
+            file_path = matches[0] if matches else None
+
+        if not file_path or not file_path.exists():
+            batch.errors += 1
+            if on_event:
+                on_event({"event": "progress", "index": i, "total": batch.total,
+                          "file": file_name, "status": "ERROR", "error": "file not found"})
+            continue
+
+        # Generate preview for face identification
+        tier = entry.get("tier", 1)
+        preview_path = generate_preview(file_path, tier)
+        if not preview_path:
+            batch.errors += 1
+            continue
+
+        # Run face identification with updated samples
+        matched_names = identify_faces(preview_path, face_samples, config=cfg)
+        _cleanup(preview_path)
+
+        old_identified = entry.get("identified") or ""
+        new_identified = ", ".join(matched_names) if matched_names else ""
+
+        # Check if identification changed
+        if new_identified == old_identified:
+            if on_event:
+                on_event({"event": "progress", "index": i, "total": batch.total,
+                          "file": file_name, "status": "UNCHANGED"})
+            continue
+
+        # Update keywords with new face matches
+        keywords = list(entry.get("keywords", []))
+        # Remove old face names from keywords
+        if old_identified:
+            old_names = {n.strip().lower() for n in old_identified.split(",")}
+            keywords = [kw for kw in keywords if kw.lower() not in old_names]
+        # Prepend new face names
+        for fname in reversed(matched_names):
+            if fname.lower() not in [kw.lower() for kw in keywords]:
+                keywords.insert(0, fname.lower())
+        keywords = keywords[:5]
+
+        # Generate new filename
+        ext = file_path.suffix.lower()
+        new_stem = generate_name(keywords, original_stem=file_path.stem)
+        new_dest = file_path.parent / f"{new_stem}{ext}"
+        new_dest = deduplicate_path(new_dest)
+
+        moved = move_file(file_path, new_dest, dry_run=dry_run)
+
+        # Update manifest entry
+        entry["name"] = new_dest.name
+        entry["keywords"] = keywords
+        entry["identified"] = new_identified or None
+        updated += 1
+        batch.moved += 1
+
+        if on_event:
+            ident_tag = f" [{new_identified}]" if new_identified else ""
+            on_event({"event": "progress", "index": i, "total": batch.total,
+                      "file": file_name, "status": "RENAMED",
+                      "dest": str(new_dest), "identified": new_identified})
+
+    batch.elapsed_ms = _elapsed(start)
+
+    if on_event:
+        on_event({
+            "event": "done",
+            "total": batch.total,
+            "moved": updated,
+            "errors": batch.errors,
+            "filtered": 0,
+            "skipped": len(prior_files) - len(photo_entries),
+            "ms": batch.elapsed_ms,
+        })
+
+    # Rewrite manifest with updated entries
+    manifest_path = output_dir / ".afs-manifest.json"
+    if manifest_path.exists() and (updated > 0 or dry_run):
+        try:
+            manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+            # Update file entries in manifest
+            for file_entry in manifest.get("files", []):
+                source = file_entry.get("source", "")
+                name = pathlib.Path(source).name
+                if name in prior_files:
+                    updated_entry = prior_files[name]
+                    file_entry["name"] = updated_entry.get("name", file_entry.get("name"))
+                    file_entry["keywords"] = updated_entry.get("keywords", file_entry.get("keywords"))
+                    file_entry["identified"] = updated_entry.get("identified", file_entry.get("identified"))
+            manifest["run"]["timestamp"] = datetime.datetime.now().isoformat(timespec="seconds")
+            manifest_path.write_text(json.dumps(manifest, indent=2), encoding="utf-8")
+        except Exception:
+            pass  # best-effort manifest update
+
+    return batch
+
+
 # --- Resort-awareness ---
 
 
@@ -629,7 +903,7 @@ def _write_manifest(
 
     for r in batch.results:
         source_name = pathlib.Path(r.source).name
-        cdr_applied = r.tier == 1 and sanitize_images
+        cdr_applied = r.tier == 1 and sanitize_images and not r.photo_detected
         entry = {
             "source": source_name,
             "name": pathlib.Path(r.dest).name if r.dest else source_name,
@@ -644,6 +918,7 @@ def _write_manifest(
             "elapsed_ms": r.elapsed_ms,
             "cdr": cdr_applied,
             "original": r.original,
+            "photo_detected": r.photo_detected,
         }
         file_entries.append(entry)
         processed_names.add(source_name)
@@ -718,6 +993,7 @@ def _write_manifest(
             "errors": batch.errors,
             "skipped": skipped,
             "cdr_applied": cdr_count,
+            "photos_detected": sum(1 for e in file_entries if e.get("photo_detected")),
             "topic_folders": len(topic_folders),
             "avg_confidence": avg_confidence,
         },

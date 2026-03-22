@@ -49,10 +49,19 @@ def main():
         "--no-convert-webp", action="store_true",
         help="Keep WebP files as-is during CDR (don't convert to JPG)",
     )
+    proc.add_argument(
+        "--reface", action="store_true",
+        help="Re-run face identification only (skip vision analysis, reuse manifest keywords)",
+    )
 
     # status command
     stat = sub.add_parser("status", help="Check Ollama connectivity and model availability")
     stat.add_argument("--config", type=str, default=None, help="Path to afs-config.json")
+
+    # flatten command
+    flat = sub.add_parser("flatten", help="Move all files from subfolders to root")
+    flat.add_argument("input", help="Directory to flatten")
+    flat.add_argument("--dry-run", action="store_true", help="Preview without moving files")
 
     args = parser.parse_args()
 
@@ -68,6 +77,8 @@ def main():
         _cmd_status(args.json, cfg)
     elif args.command == "process":
         _cmd_process(args, cfg)
+    elif args.command == "flatten":
+        _cmd_flatten(args)
 
 
 def _cmd_status(json_mode: bool, cfg: dict):
@@ -124,7 +135,7 @@ def _cmd_status(json_mode: bool, cfg: dict):
 
 def _cmd_process(args, cfg: dict):
     """Process files in a directory."""
-    from afs.pipeline import process_batch
+    from afs.pipeline import process_batch, reface_batch
 
     input_dir = pathlib.Path(args.input).resolve()
     output_dir = pathlib.Path(args.output).resolve() if args.output else input_dir
@@ -134,20 +145,6 @@ def _cmd_process(args, cfg: dict):
         sys.exit(EXIT_BAD_INPUT)
 
     json_mode = args.json
-    sanitize = cfg.get("processing", {}).get("sanitize_images", True)
-    convert_webp = cfg.get("processing", {}).get("convert_webp", True)
-
-    # CLI flags override config
-    if args.no_sanitize:
-        sanitize = False
-    if args.no_convert_webp:
-        convert_webp = False
-
-    # Delete manifest if --force
-    if args.force:
-        manifest_path = output_dir / ".afs-manifest.json"
-        if manifest_path.exists():
-            manifest_path.unlink()
 
     def on_event(event):
         if json_mode:
@@ -155,17 +152,41 @@ def _cmd_process(args, cfg: dict):
         else:
             _print_human(event)
 
-    batch = process_batch(
-        input_dir=input_dir,
-        output_dir=output_dir,
-        dry_run=args.dry_run,
-        sanitize_images=sanitize,
-        convert_webp=convert_webp,
-        on_event=on_event,
-        config=cfg,
-        force=args.force,
-        max_files=args.max_files,
-    )
+    # --reface: lightweight face re-identification only
+    if args.reface:
+        batch = reface_batch(
+            input_dir=input_dir,
+            output_dir=output_dir,
+            dry_run=args.dry_run,
+            config=cfg,
+            on_event=on_event,
+        )
+    else:
+        sanitize = cfg.get("processing", {}).get("sanitize_images", True)
+        convert_webp = cfg.get("processing", {}).get("convert_webp", True)
+
+        if args.no_sanitize:
+            sanitize = False
+        if args.no_convert_webp:
+            convert_webp = False
+
+        # Delete manifest if --force
+        if args.force:
+            manifest_path = output_dir / ".afs-manifest.json"
+            if manifest_path.exists():
+                manifest_path.unlink()
+
+        batch = process_batch(
+            input_dir=input_dir,
+            output_dir=output_dir,
+            dry_run=args.dry_run,
+            sanitize_images=sanitize,
+            convert_webp=convert_webp,
+            on_event=on_event,
+            config=cfg,
+            force=args.force,
+            max_files=args.max_files,
+        )
 
     # Exit code based on outcome
     if batch.total > 0 and batch.errors == batch.total:
@@ -174,6 +195,29 @@ def _cmd_process(args, cfg: dict):
     named_count = sum(1 for r in batch.results if r.method == "vision")
     if named_count > 0 and all(r.error for r in batch.results if r.method == "vision"):
         sys.exit(EXIT_ALL_FAILED)
+
+
+def _cmd_flatten(args):
+    """Flatten all topic folders — move files to root."""
+    from afs.sorting import flatten_directory
+
+    target = pathlib.Path(args.input).resolve()
+    if not target.exists():
+        print(f"Error: Directory not found: {target}", file=sys.stderr)
+        sys.exit(EXIT_BAD_INPUT)
+
+    dry_label = " (dry run)" if args.dry_run else ""
+    print(f"\n  Flattening: {target}{dry_label}\n")
+
+    def on_event(event):
+        if event.get("event") == "flatten-progress":
+            print(f"  {event['from']}/{event['file']} -> {event['to']}")
+
+    result = flatten_directory(target, dry_run=args.dry_run, on_event=on_event)
+
+    print(f"\n  Done: {result['files_moved']} files moved, "
+          f"{result['folders_removed']} folders removed, "
+          f"{result['collisions']} collisions resolved\n")
 
 
 def _print_human(event: dict):
@@ -193,13 +237,14 @@ def _print_human(event: dict):
         tier = event.get("tier", "?")
         total = event.get("total", "?")
         ident = f" [{event['identified']}]" if event.get("identified") else ""
+        photo_tag = " [photo]" if event.get("photo_detected") else ""
         if event.get("dest"):
             dest = pathlib.Path(event["dest"]).name
             topic = event.get("topic", "")
             print(f"  [{event['index']}/{total}] T{tier} {status}: {name} -> {topic}/{dest}{ident}")
         elif status == "NAMED":
             kw = ", ".join(event.get("keywords", [])[:3])
-            print(f"  [{event['index']}/{total}] T{tier} {status}: {name} [{kw}]{ident}")
+            print(f"  [{event['index']}/{total}] T{tier} {status}: {name} [{kw}]{ident}{photo_tag}")
         elif event.get("error"):
             err_type = event.get("error_type", "")
             print(f"  [{event['index']}/{total}] T{tier} {status}: {name} -- [{err_type}] {event['error']}")

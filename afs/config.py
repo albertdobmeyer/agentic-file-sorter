@@ -9,7 +9,7 @@ import os
 import pathlib
 
 
-VERSION = "1.2.0"
+VERSION = "1.3.0"
 
 # Project root is one level above afs/ package
 PROJECT_ROOT = pathlib.Path(__file__).parent.parent
@@ -30,6 +30,10 @@ DEFAULTS = {
         "convert_webp": True,
         "chunk_size": 30,
         "confidence_threshold": 0.5,
+        "photo_threshold_mp": 4.0,
+        "skip_cdr_photos": True,
+        "faces_dir": "",
+        "identify_faces": True,
     },
     "sorting": {
         "max_topics": 25,
@@ -46,6 +50,7 @@ DEFAULTS = {
             ".xlsx", ".xls", ".csv", ".doc", ".docx", ".pptx", ".ppt",
             ".db", ".sqlite", ".mdb",
         ],
+        "photo_sorting": "flat",
         "custom_folders": {},
         "folder_aliases": {},
     },
@@ -65,6 +70,11 @@ _ENV_MAP = {
     "CONVERT_WEBP": ("processing", "convert_webp"),
     "CHUNK_SIZE": ("processing", "chunk_size"),
     "CONFIDENCE_THRESHOLD": ("processing", "confidence_threshold"),
+    "PHOTO_THRESHOLD_MP": ("processing", "photo_threshold_mp"),
+    "SKIP_CDR_PHOTOS": ("processing", "skip_cdr_photos"),
+    "FACES_DIR": ("processing", "faces_dir"),
+    "IDENTIFY_FACES": ("processing", "identify_faces"),
+    "PHOTO_SORTING": ("sorting", "photo_sorting"),
     "MAX_TOPICS": ("sorting", "max_topics"),
     "MAX_TOPIC_WORDS": ("sorting", "max_topic_words"),
     "CLEANUP_EMPTY_FOLDERS": ("sorting", "cleanup_empty_folders"),

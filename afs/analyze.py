@@ -35,6 +35,7 @@ def analyze_vision(
     preview_path: pathlib.Path,
     filename_hint: str = "",
     config: dict | None = None,
+    photo_hint: bool = False,
 ) -> dict:
     """Analyze a preview image using the vision model.
 
@@ -65,13 +66,22 @@ def analyze_vision(
             "Use this as a HINT — trust what you SEE over what the filename says.\n"
         )
 
+    photo_context = ""
+    if photo_hint:
+        photo_context = (
+            "\nThis is likely a CAMERA PHOTO (not a meme or screenshot). "
+            "Focus on the SCENE, SETTING, and SUBJECTS. "
+            "If people are visible, describe them (e.g. 'man', 'woman', 'group', 'couple'). "
+            "Prefer location or event descriptions over generic labels.\n"
+        )
+
     prompt = f"""Analyze this image and respond with ONLY a JSON object (no other text):
 {{
   "topic": "single PLURAL word — the broad category (e.g. politics, animals, science, vehicles, memes, comics, games, sports, architecture, nature, food, religion, mythology, history, finance, technology, education, emotions, celebrities, maps, code, documents, music, configs)",
   "keywords": ["2-5 SPECIFIC descriptive words for a good filename"],
   "confidence": 0.0 to 1.0
 }}
-{filename_context}
+{filename_context}{photo_context}
 CRITICAL RULES:
 - topic MUST be PLURAL (animals not animal, comics not comic)
 - If you recognize a SPECIFIC character (SpongeBob, Pepe, Mickey Mouse, Wojak, etc.), put their name in keywords

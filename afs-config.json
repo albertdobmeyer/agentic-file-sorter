@@ -1,5 +1,33 @@
 {
+  "_comment": "AFS Configuration — all settings with defaults. Only change what you need.",
+
+  "models": {
+    "ollama_url": "http://localhost:11434",
+    "vision_model": "llava:latest",
+    "text_model": "qwen3:8b",
+    "vision_timeout": 180,
+    "text_timeout": 120,
+    "vision_ctx": 4096,
+    "text_ctx": 8192,
+    "keep_alive": "30m"
+  },
+
+  "processing": {
+    "sanitize_images": true,
+    "convert_webp": true,
+    "chunk_size": 30,
+    "confidence_threshold": 0.5,
+    "photo_threshold_mp": 4.0,
+    "skip_cdr_photos": true,
+    "faces_dir": "",
+    "identify_faces": true
+  },
+
   "sorting": {
+    "max_topics": 25,
+    "max_topic_words": 2,
+    "cleanup_empty_folders": true,
+    "photo_sorting": "flat",
     "custom_folders": {},
     "folder_aliases": {}
   }

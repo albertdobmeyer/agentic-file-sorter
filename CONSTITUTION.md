@@ -223,6 +223,12 @@ This constitution can be amended. Amendments must:
 
 5. **Amendment 5: Reinstate folder consolidation as Step 2a** (Axiom 3 SEMANTIC, supersedes Amendment 4) — When prior folders exist, a dedicated consolidation pass evaluates all folder names holistically and produces a merge map before file assignment. Amendment 4's assumption that implicit consolidation during file assignment was sufficient proved wrong — the reasoning model cannot consolidate folders it did not create. Step 2a is one cheap reasoning model call (~600 tokens) that sees all folder names at once and decides what to merge. Pipeline becomes: Step 1 (naming) → Step 2a (folder consolidation) → Step 2b (file assignment). Junk folders named after file extensions are flagged for re-sorting through Step 1.
 
+**Ratified 2026-03-22 (v1.2 → v1.3)**
+
+6. **Amendment 6: Photo-aware CDR** (Axiom 4 SECURE) — CDR is skipped for detected camera photos. Detection uses three signals: EXIF camera metadata (Make/Model tags), resolution threshold (default 4MP — memes are <2MP, phones start at 8MP), and camera filename patterns (IMG_, DSC_, PXL_, etc.). Photos are treated as Tier 2 for CDR purposes: analyzed via preview but original bytes and EXIF metadata preserved. Configurable via `skip_cdr_photos` (default: true). This prevents destructive re-rendering of high-value camera photos while maintaining CDR security for downloaded memes.
+
+7. **Amendment 7: Face identification via sample images** (Axiom 5 VISUAL-ONLY) — Optional face matching using the vision model's multi-image capability. Users provide face sample images in a `faces/` directory (e.g., `faces/albert.jpg`). During Step 1, detected photos are sent to the vision model alongside all reference face images. The model identifies which named people appear and injects their names into the keywords for semantic naming. Zero new dependencies — leverages Ollama's existing multi-image API. Only runs on detected photos when face samples exist.
+
 ## Lineage
 
 Supersedes all previous architecture documents for SecureSemanticSorter. Those remain as historical reference but do not govern implementation. AFS starts clean.
