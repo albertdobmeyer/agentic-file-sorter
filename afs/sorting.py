@@ -113,3 +113,80 @@ def scan_existing_folders(output_dir: pathlib.Path) -> list[str]:
         return []
     return [d.name for d in output_dir.iterdir()
             if d.is_dir() and not d.name.startswith(".") and d.name != "filtered"]
+
+
+def flatten_directory(
+    target_dir: pathlib.Path,
+    dry_run: bool = False,
+    on_event=None,
+) -> dict:
+    """Move all files from subfolders to the root of target_dir.
+
+    Skips hidden dirs, filtered/, and manifest files.
+    Removes empty folders after flattening.
+    Returns summary: {files_moved, folders_removed, collisions}.
+    """
+    from afs.naming import deduplicate_path
+
+    files_moved = 0
+    collisions = 0
+    folders_to_clean = set()
+
+    # Find all files in subdirectories (not root-level files)
+    for p in sorted(target_dir.rglob("*")):
+        if not p.is_file():
+            continue
+        # Skip files already at root level
+        rel = p.relative_to(target_dir)
+        if len(rel.parts) <= 1:
+            continue
+        # Skip hidden dirs, filtered/, manifest
+        if any(part.startswith(".") for part in rel.parts):
+            continue
+        if rel.parts[0] == "filtered":
+            continue
+
+        dest = target_dir / p.name
+        if dest.exists() and dest.resolve() != p.resolve():
+            dest = deduplicate_path(dest)
+            collisions += 1
+
+        moved = move_file(p, dest, dry_run=dry_run)
+        if moved:
+            files_moved += 1
+            folders_to_clean.add(p.parent)
+
+        if on_event:
+            on_event({
+                "event": "flatten-progress",
+                "file": p.name,
+                "from": str(rel.parent),
+                "to": dest.name,
+                "dry_run": dry_run,
+            })
+
+    # Remove empty folders (deepest first)
+    folders_removed = 0
+    if not dry_run:
+        for folder in sorted(folders_to_clean, key=lambda p: len(p.parts), reverse=True):
+            try:
+                # Walk up removing empty dirs until we hit target_dir
+                current = folder
+                while current != target_dir:
+                    if current.exists() and not any(current.iterdir()):
+                        current.rmdir()
+                        folders_removed += 1
+                    current = current.parent
+            except OSError:
+                pass
+
+    # Clear manifest since folder assignments are now invalid
+    manifest_path = target_dir / ".afs-manifest.json"
+    if manifest_path.exists() and not dry_run:
+        manifest_path.unlink()
+
+    return {
+        "files_moved": files_moved,
+        "folders_removed": folders_removed,
+        "collisions": collisions,
+    }

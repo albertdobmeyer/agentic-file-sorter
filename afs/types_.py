@@ -25,6 +25,7 @@ class FileResult:
     elapsed_ms: int = 0
     tier: int = 0
     original: str | None = None  # original filename before CDR renames
+    photo_detected: bool = False  # True if is_likely_photo() identified a camera photo
 
 
 @dataclass
