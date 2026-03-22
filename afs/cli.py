@@ -1,0 +1,239 @@
+"""Agentic File Sorter Lite — CLI and event formatting.
+
+Usage:
+    python afs-lite.py process <input_dir> [--output DIR] [--dry-run] [--force]
+    python afs-lite.py status
+    python afs-lite.py --json process <input_dir>
+"""
+
+import argparse
+import json
+import pathlib
+import shutil
+import sys
+
+import requests
+
+from afs.config import load_config, VERSION
+
+
+# Exit codes
+EXIT_OK = 0
+EXIT_BAD_INPUT = 1
+EXIT_OLLAMA_DOWN = 2
+EXIT_ALL_FAILED = 3
+
+
+def main():
+    parser = argparse.ArgumentParser(
+        prog="afs-lite",
+        description="Agentic File Sorter Lite — secure semantic naming for downloaded media",
+    )
+    parser.add_argument("--json", action="store_true", help="NDJSON output mode (one JSON object per line)")
+    parser.add_argument("--version", action="version", version=f"afs-lite {VERSION}")
+    sub = parser.add_subparsers(dest="command")
+
+    # process command
+    proc = sub.add_parser("process", help="Process files in a directory")
+    proc.add_argument("input", help="Input directory to process")
+    proc.add_argument("--output", "-o", help="Output directory (default: same as input)")
+    proc.add_argument("--dry-run", action="store_true", help="Preview without moving files")
+    proc.add_argument("--force", action="store_true", help="Ignore prior manifest — reprocess all files")
+    proc.add_argument("--max-files", type=int, default=0, help="Process only the first N files (0 = all)")
+    proc.add_argument("--config", type=str, default=None, help="Path to afs-config.json (default: project root)")
+    proc.add_argument(
+        "--no-sanitize", action="store_true",
+        help="Skip CDR re-rendering (treat Tier 1 as Tier 2)",
+    )
+    proc.add_argument(
+        "--no-convert-webp", action="store_true",
+        help="Keep WebP files as-is during CDR (don't convert to JPG)",
+    )
+
+    # status command
+    stat = sub.add_parser("status", help="Check Ollama connectivity and model availability")
+    stat.add_argument("--config", type=str, default=None, help="Path to afs-config.json")
+
+    args = parser.parse_args()
+
+    if not args.command:
+        parser.print_help()
+        sys.exit(EXIT_BAD_INPUT)
+
+    # Load config
+    config_path = pathlib.Path(args.config) if hasattr(args, "config") and args.config else None
+    cfg = load_config(config_path)
+
+    if args.command == "status":
+        _cmd_status(args.json, cfg)
+    elif args.command == "process":
+        _cmd_process(args, cfg)
+
+
+def _cmd_status(json_mode: bool, cfg: dict):
+    """Check Ollama connectivity, models, and dependencies."""
+    models_cfg = cfg.get("models", {})
+    ollama_url = models_cfg.get("ollama_url", "http://localhost:11434")
+    vision_model = models_cfg.get("vision_model", "llava:latest")
+    text_model = models_cfg.get("text_model", "qwen3:8b")
+    sanitize = cfg.get("processing", {}).get("sanitize_images", True)
+    convert_webp = cfg.get("processing", {}).get("convert_webp", True)
+
+    try:
+        resp = requests.get(f"{ollama_url}/api/tags", timeout=5)
+        resp.raise_for_status()
+        models = [m["name"] for m in resp.json().get("models", [])]
+        online = True
+    except Exception:
+        models = []
+        online = False
+
+    ffmpeg_available = shutil.which("ffmpeg") is not None
+
+    result = {
+        "event": "status",
+        "version": VERSION,
+        "ollama_online": online,
+        "ollama_url": ollama_url,
+        "vision_model": vision_model,
+        "text_model": text_model,
+        "sanitize_images": sanitize,
+        "convert_webp": convert_webp,
+        "ffmpeg_available": ffmpeg_available,
+        "models_available": models,
+    }
+
+    if json_mode:
+        print(json.dumps(result))
+    else:
+        status = "ONLINE" if online else "OFFLINE"
+        print(f"Ollama: {status} ({ollama_url})")
+        print(f"Vision model: {vision_model}")
+        print(f"Text model: {text_model}")
+        print(f"CDR (sanitize): {'ON' if sanitize else 'OFF'}")
+        print(f"Convert WebP: {'ON' if convert_webp else 'OFF'}")
+        print(f"ffmpeg: {'FOUND' if ffmpeg_available else 'NOT FOUND'}")
+        if models:
+            print(f"Available: {', '.join(models)}")
+        else:
+            print("No models found" if online else "Cannot connect to Ollama")
+
+    if not online:
+        sys.exit(EXIT_OLLAMA_DOWN)
+
+
+def _cmd_process(args, cfg: dict):
+    """Process files in a directory."""
+    from afs.pipeline import process_batch
+
+    input_dir = pathlib.Path(args.input).resolve()
+    output_dir = pathlib.Path(args.output).resolve() if args.output else input_dir
+
+    if not input_dir.exists():
+        _error(f"Input directory not found: {input_dir}", args.json)
+        sys.exit(EXIT_BAD_INPUT)
+
+    json_mode = args.json
+    sanitize = cfg.get("processing", {}).get("sanitize_images", True)
+    convert_webp = cfg.get("processing", {}).get("convert_webp", True)
+
+    # CLI flags override config
+    if args.no_sanitize:
+        sanitize = False
+    if args.no_convert_webp:
+        convert_webp = False
+
+    # Delete manifest if --force
+    if args.force:
+        manifest_path = output_dir / ".afs-manifest.json"
+        if manifest_path.exists():
+            manifest_path.unlink()
+
+    def on_event(event):
+        if json_mode:
+            print(json.dumps(event), flush=True)
+        else:
+            _print_human(event)
+
+    batch = process_batch(
+        input_dir=input_dir,
+        output_dir=output_dir,
+        dry_run=args.dry_run,
+        sanitize_images=sanitize,
+        convert_webp=convert_webp,
+        on_event=on_event,
+        config=cfg,
+        force=args.force,
+        max_files=args.max_files,
+    )
+
+    # Exit code based on outcome
+    if batch.total > 0 and batch.errors == batch.total:
+        sys.exit(EXIT_ALL_FAILED)
+    # Step 2 total failure: all named files ended up in errors
+    named_count = sum(1 for r in batch.results if r.method == "vision")
+    if named_count > 0 and all(r.error for r in batch.results if r.method == "vision"):
+        sys.exit(EXIT_ALL_FAILED)
+
+
+def _print_human(event: dict):
+    """Pretty-print an event for human consumption."""
+    ev = event["event"]
+    if ev == "start":
+        skipped = event.get("skipped", 0)
+        skip_msg = f" (skipping {skipped} already sorted)" if skipped else ""
+        print(f"\n  Processing {event['total']} files{skip_msg}")
+        print(f"  Input:  {event['input']}")
+        print(f"  Output: {event['output']}\n")
+    elif ev == "warm":
+        print(f"  Loading model: {event.get('model', '?')}...")
+    elif ev == "progress":
+        status = event["status"].upper()
+        name = event["file"]
+        tier = event.get("tier", "?")
+        total = event.get("total", "?")
+        ident = f" [{event['identified']}]" if event.get("identified") else ""
+        if event.get("dest"):
+            dest = pathlib.Path(event["dest"]).name
+            topic = event.get("topic", "")
+            print(f"  [{event['index']}/{total}] T{tier} {status}: {name} -> {topic}/{dest}{ident}")
+        elif status == "NAMED":
+            kw = ", ".join(event.get("keywords", [])[:3])
+            print(f"  [{event['index']}/{total}] T{tier} {status}: {name} [{kw}]{ident}")
+        elif event.get("error"):
+            err_type = event.get("error_type", "")
+            print(f"  [{event['index']}/{total}] T{tier} {status}: {name} -- [{err_type}] {event['error']}")
+    elif ev == "done":
+        skipped = event.get("skipped", 0)
+        skip_msg = f", {skipped} skipped" if skipped else ""
+        print(f"\n  Done: {event['moved']} moved, {event['errors']} errors, "
+              f"{event['filtered']} filtered{skip_msg} ({event['ms']}ms)\n")
+    elif ev == "step2-start":
+        count = event.get("files", 0)
+        chunks = event.get("chunks", 1)
+        prior = event.get("prior_folders", 0)
+        chunk_msg = f" in {chunks} chunks" if chunks > 1 else ""
+        prior_msg = f" ({prior} existing folders)" if prior else ""
+        print(f"\n  Step 2: Sorting {count} files into folders{chunk_msg}{prior_msg}...")
+    elif ev == "step2-chunk":
+        print(f"    Chunk {event['chunk']}/{event['of']}: {event['assigned']} assigned, {event['folders_so_far']} folders")
+    elif ev == "step2-done":
+        assignments = event.get("assignments", {})
+        folders_created = event.get("folders_created", 0)
+        print(f"  Step 2 done: {folders_created} folders assigned")
+        for folder, count in sorted(assignments.items()):
+            print(f"    {folder}: {count} files")
+    elif ev == "step2-error":
+        err_type = event.get("error_type", "unknown")
+        print(f"  Step 2 failed [{err_type}]: {event.get('error', '')}")
+
+
+def _error(msg: str, json_mode: bool):
+    if json_mode:
+        print(json.dumps({"event": "error", "error": msg}))
+    else:
+        print(f"Error: {msg}", file=sys.stderr)
+
+
+if __name__ == "__main__":
+    main()
