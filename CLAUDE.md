@@ -35,10 +35,13 @@ One JSON object per line on stdout. Event types:
 | `start` | Run begins | `total`, `skipped`, `input`, `output` |
 | `warm` | Model loading into GPU | `model` |
 | `progress` | After each file (Step 1) | `index`, `total`, `file`, `status`, `tier`, `confidence`, `keywords`, `error`, `error_type` |
-| `step2-start` | Step 2 begins | `files`, `chunks`, `prior_folders` |
+| `step2a-start` | Folder consolidation begins | `folders` |
+| `step2a-done` | Consolidation complete | `merges`, `folders_eliminated`, `resort_files`, `consolidated_folders` |
+| `resort-start` | Re-sorting junk folder files | `files` |
+| `step2-start` | Step 2b file assignment begins | `files`, `chunks`, `prior_folders` |
 | `step2-chunk` | After each chunk (large batches) | `chunk`, `of`, `assigned`, `folders_so_far` |
-| `step2-done` | Step 2 complete | `assignments`, `folders_created` |
-| `step2-error` | Step 2 failed | `error`, `error_type` |
+| `step2-done` | Step 2b complete | `assignments`, `folders_created` |
+| `step2-error` | Step 2b failed | `error`, `error_type` |
 | `done` | Run complete | `total`, `moved`, `errors`, `filtered`, `skipped`, `ms` |
 
 ## Exit Codes
@@ -59,6 +62,8 @@ Written to the output directory after every file (crash-safe checkpointing). Age
 **`stats` block**: `total`, `named`, `sorted`, `filtered`, `errors`, `skipped`, `cdr_applied`, `topic_folders`, `avg_confidence`
 
 **Per-file entries**: `source`, `name`, `keywords`, `folder`, `status`, `tier`, `confidence`, `identified`, `error`, `error_type`, `elapsed_ms`, `cdr`, `original`
+
+**`consolidation` block** (present when Step 2a ran): `merge_map`, `folders_before`, `folders_after`, `files_moved`, `files_resorted`
 
 ## Error Types
 
@@ -131,8 +136,9 @@ agentic-file-sorter/
 │   ├── __init__.py
 │   ├── cli.py               CLI, event formatting, exit codes
 │   ├── config.py             Central config loader (json > env > defaults)
-│   ├── pipeline.py           Orchestrator: Step 1, Step 2 dispatch, manifest, resort-awareness
-│   ├── batch_sort.py         Step 2: prompt building, reasoning model call, chunking
+│   ├── pipeline.py           Orchestrator: Step 1, Step 2a, Step 2b, manifest, resort-awareness
+│   ├── consolidate.py        Step 2a: folder consolidation, merge execution
+│   ├── batch_sort.py         Step 2b: prompt building, reasoning model call, chunking
 │   ├── analyze.py            Ollama vision API, character identification, error classification
 │   ├── preview.py            CDR re-rendering + preview generation
 │   ├── naming.py             Keywords → kebab-case semantic filename
@@ -160,13 +166,19 @@ file → classify_tier()
   └─ Tier 2 → generate_preview() → analyze_vision() → semantic name (original untouched)
   └─ manifest checkpoint after EVERY file
 
-STEP 2 — SORTING (batch, reasoning model) [batch_sort.py]
-manifest → reasoning model → topic folder assignments
+STEP 2a — FOLDER CONSOLIDATION (one call, reasoning model) [consolidate.py]
+all folder names → reasoning model → merge map
+  ├─ Merges redundant/overlapping folders (pol→politics, sci→science)
+  ├─ Flags junk extension folders (jpg/, png/) as RESORT
+  ├─ Executes folder merges (physically moves files)
+  └─ RESORT files queued for Step 1 processing
+
+STEP 2b — FILE ASSIGNMENT (chunked, reasoning model) [batch_sort.py]
+named files + consolidated folders → reasoning model → topic folder assignments
   ├─ Chunks large batches (chunk_size per call, step2-chunk events)
   ├─ Custom folders matched by keyword triggers
   ├─ Folder aliases resolved
-  └─ On re-runs: receives existing folder structure from prior manifest
-  └─ manifest checkpoint after sorting
+  └─ Works against consolidated folder list (not original 100+ folders)
 → final manifest (step: "complete")
 ```
 

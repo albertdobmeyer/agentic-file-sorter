@@ -219,6 +219,10 @@ This constitution can be amended. Amendments must:
 
 4. **Amendment 4: Retire consolidation** (consequence of Amendment 2) — No separate consolidation phase. The reasoning model handles folder creation, matching, and merging in a single batch-aware sorting step.
 
+**Ratified 2026-03-21 (v1.1 → v1.2)**
+
+5. **Amendment 5: Reinstate folder consolidation as Step 2a** (Axiom 3 SEMANTIC, supersedes Amendment 4) — When prior folders exist, a dedicated consolidation pass evaluates all folder names holistically and produces a merge map before file assignment. Amendment 4's assumption that implicit consolidation during file assignment was sufficient proved wrong — the reasoning model cannot consolidate folders it did not create. Step 2a is one cheap reasoning model call (~600 tokens) that sees all folder names at once and decides what to merge. Pipeline becomes: Step 1 (naming) → Step 2a (folder consolidation) → Step 2b (file assignment). Junk folders named after file extensions are flagged for re-sorting through Step 1.
+
 ## Lineage
 
 Supersedes all previous architecture documents for SecureSemanticSorter. Those remain as historical reference but do not govern implementation. AFS starts clean.

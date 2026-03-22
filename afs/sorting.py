@@ -108,7 +108,8 @@ def move_file(source: pathlib.Path, dest: pathlib.Path, dry_run: bool = False) -
 
 
 def scan_existing_folders(output_dir: pathlib.Path) -> list[str]:
-    """List current subfolders in the output directory for folder matching."""
+    """List current subfolders in the output directory (excludes hidden and filtered)."""
     if not output_dir.exists():
         return []
-    return [d.name for d in output_dir.iterdir() if d.is_dir() and not d.name.startswith(".")]
+    return [d.name for d in output_dir.iterdir()
+            if d.is_dir() and not d.name.startswith(".") and d.name != "filtered"]
