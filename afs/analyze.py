@@ -69,10 +69,11 @@ def analyze_vision(
     photo_context = ""
     if photo_hint:
         photo_context = (
-            "\nThis is likely a CAMERA PHOTO (not a meme or screenshot). "
-            "Focus on the SCENE, SETTING, and SUBJECTS. "
-            "If people are visible, describe them (e.g. 'man', 'woman', 'group', 'couple'). "
-            "Prefer location or event descriptions over generic labels.\n"
+            "\nThis is a CAMERA PHOTO. Naming priorities for photos:\n"
+            "1. WHO: name people if recognizable, otherwise 'man', 'woman', 'child', 'couple', 'group'\n"
+            "2. WHAT: main subject or activity (e.g. 'birthday', 'hiking', 'dinner')\n"
+            "3. WHERE: location or setting (e.g. 'beach', 'kitchen', 'park')\n"
+            "If the photo is dark/blurry with no discernible content, use just one keyword like 'dark' or 'blurry'.\n"
         )
 
     prompt = f"""Analyze this image and respond with ONLY a JSON object (no other text):
@@ -87,6 +88,9 @@ CRITICAL RULES:
 - If you recognize a SPECIFIC character (SpongeBob, Pepe, Mickey Mouse, Wojak, etc.), put their name in keywords
 - If you recognize a SPECIFIC person, put their name in keywords
 - Prefer SPECIFIC proper nouns over generic descriptions
+- NEVER use these as keywords: "image", "photo", "photograph", "photography", "camera", "picture", "person", "individual", "subject"
+- Instead of "person" use specific terms: "man", "woman", "child", "couple", "group", "crowd"
+- Each keyword must add UNIQUE information — no synonyms (e.g. "dark" not "dark, darkness, void, night")
 - Keywords should form a good filename when joined: ["spongebob", "birthday", "cake"] → spongebob-birthday-cake.jpg
 - Keep keywords SHORT (1-2 words each), max 5 keywords total
 - topic must be lowercase

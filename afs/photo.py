@@ -86,19 +86,27 @@ def is_likely_photo(path: pathlib.Path, config: dict | None = None) -> bool:
 
 
 def extract_photo_sequence(stem: str) -> str | None:
-    """Extract the date/sequence portion from a camera filename.
+    """Extract the date/sequence portion from a camera or AFS-named filename.
 
-    Examples:
-        IMG_20250312_073 → "20250312-073"
-        DSC_4521         → "4521"
-        PXL_20250312     → "20250312"
-        spongebob-meme   → None
+    Camera filenames:
+        IMG_20250312_073       → "20250312-073"
+        DSC_4521               → "4521"
+        PXL_20250312           → "20250312"
+    Already-named AFS files (trailing number):
+        cat-curtain-peekaboo-2537  → "2537"
+        tori-woman-red-hair-2534   → "2534"
+        spongebob-meme             → None
     """
+    # Try camera filename pattern first
     match = _SEQUENCE_RE.match(stem)
-    if not match:
-        return None
+    if match:
+        seq = match.group(1)
+        seq = re.sub(r"[_\s]+", "-", seq).strip("-")
+        return seq if seq else None
 
-    seq = match.group(1)
-    # Normalize separators to hyphen
-    seq = re.sub(r"[_\s]+", "-", seq).strip("-")
-    return seq if seq else None
+    # Try trailing number from already-named files (3-8 digits at end)
+    trailing = re.search(r"-(\d{3,8})(?:-\d)?$", stem)
+    if trailing:
+        return trailing.group(1)
+
+    return None

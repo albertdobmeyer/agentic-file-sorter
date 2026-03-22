@@ -163,10 +163,12 @@ def process_file(
                 keywords = keywords[:5]
                 confidence = max(confidence, 0.8)
 
-        # Photo sequence preservation (append camera date/number as last keyword)
+        # Photo sequence preservation (always last keyword for consistent naming)
         if is_photo:
             seq = extract_photo_sequence(path.stem)
-            if seq and seq not in keywords:
+            if seq:
+                # Remove if already present (could be from filename hint), re-add at end
+                keywords = [kw for kw in keywords if kw != seq]
                 keywords.append(seq)
 
         _cleanup(preview_path)
@@ -507,8 +509,14 @@ def _process_batch_inner(
             source = pathlib.Path(result.source)
             ext = source.suffix.lower()
             semantic = generate_name(result.keywords, original_stem=source.stem)
+            if semantic == "unsorted" and result.photo_detected:
+                semantic = "photo"
             dest = source.parent / f"{semantic}{ext}"
-            dest = deduplicate_path(dest)
+            # If dest is the source file itself (same name), skip dedup
+            if dest.exists() and dest.resolve() == source.resolve():
+                pass  # same file, move_file will return False
+            else:
+                dest = deduplicate_path(dest)
             moved = move_file(source, dest, dry_run=dry_run)
             result.dest = str(dest)
             result.status = "dry-run" if dry_run else ("moved" if moved else "renamed")
