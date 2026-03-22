@@ -8,3 +8,4 @@ build/
 faces/**
 !faces/.gitkeep
 .afs-manifest.json
+node_modules/

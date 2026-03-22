@@ -1,0 +1,9 @@
+{
+  "name": "afs-dashboard",
+  "version": "1.0.0",
+  "description": "AFS Settings Dashboard",
+  "main": "server.js",
+  "dependencies": {
+    "express": "^4.21.0"
+  }
+}

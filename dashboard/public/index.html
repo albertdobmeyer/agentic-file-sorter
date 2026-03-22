@@ -1,0 +1,1184 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>AFS Dashboard</title>
+<link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><rect width='100' height='100' rx='12' fill='%230d1117'/><text x='50' y='62' text-anchor='middle' font-size='42' font-weight='bold' fill='%2358a6ff'>AFS</text></svg>">
+<style>
+:root {
+  --bg: #0d1117; --bg2: #161b22; --bg3: #21262d; --bg4: #30363d;
+  --fg: #e6edf3; --fg2: #8b949e; --fg3: #484f58;
+  --accent: #58a6ff; --border: #30363d;
+  --green: #3fb950; --amber: #d29922; --red: #f85149;
+  --radius: 6px;
+}
+html.light {
+  --bg: #ffffff; --bg2: #f6f8fa; --bg3: #e8ecf0; --bg4: #d0d7de;
+  --fg: #1f2328; --fg2: #656d76; --fg3: #8b949e;
+  --accent: #0969da; --border: #d0d7de;
+  --green: #1a7f37; --amber: #9a6700; --red: #cf222e;
+}
+* { box-sizing: border-box; margin: 0; padding: 0; }
+body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; background: var(--bg); color: var(--fg); font-size: 14px; }
+
+/* Header */
+.header { display: flex; align-items: center; justify-content: space-between; padding: 12px 20px; border-bottom: 1px solid var(--border); background: var(--bg2); }
+.header-left { display: flex; align-items: baseline; gap: 10px; }
+.header-left h1 { font-size: 20px; font-weight: 700; color: var(--accent); letter-spacing: 1px; }
+.header-left span { font-size: 13px; color: var(--fg2); }
+.header-center { display: flex; border: 1px solid var(--border); border-radius: var(--radius); overflow: hidden; }
+.tab-btn { padding: 7px 18px; border: none; background: var(--bg3); color: var(--fg2); cursor: pointer; font-size: 13px; font-family: inherit; transition: background 0.15s, color 0.15s; }
+.tab-btn:not(:last-child) { border-right: 1px solid var(--border); }
+.tab-btn:hover { color: var(--fg); }
+.tab-btn.active { background: var(--accent); color: #fff; }
+.header-right { display: flex; align-items: center; gap: 10px; }
+.theme-toggle { background: none; border: 1px solid var(--border); border-radius: var(--radius); padding: 5px 8px; cursor: pointer; font-size: 16px; line-height: 1; color: var(--fg); }
+.theme-toggle:hover { background: var(--bg3); }
+.version-label { font-size: 12px; color: var(--fg3); }
+
+/* Status bar */
+.status-bar { display: flex; align-items: center; gap: 16px; padding: 8px 20px; border-bottom: 1px solid var(--border); background: var(--bg2); font-size: 12px; color: var(--fg2); flex-wrap: wrap; }
+.status-item { display: flex; align-items: center; gap: 5px; }
+.dot { width: 8px; height: 8px; border-radius: 50%; display: inline-block; flex-shrink: 0; }
+.dot-green { background: var(--green); }
+.dot-red { background: var(--red); }
+.dot-amber { background: var(--amber); }
+.status-bar .refresh-btn { background: none; border: 1px solid var(--border); border-radius: var(--radius); padding: 2px 8px; cursor: pointer; color: var(--fg2); font-size: 12px; font-family: inherit; }
+.status-bar .refresh-btn:hover { background: var(--bg3); color: var(--fg); }
+
+/* Container */
+.container { max-width: 900px; margin: 0 auto; padding: 20px; }
+.tab-content { display: none; }
+.tab-content.active { display: block; }
+
+/* Cards & sections */
+.card { background: var(--bg2); border: 1px solid var(--border); border-radius: var(--radius); padding: 20px; margin-bottom: 16px; }
+.section-header { font-size: 13px; text-transform: uppercase; letter-spacing: 0.5px; color: var(--fg2); margin-bottom: 12px; cursor: pointer; display: flex; align-items: center; gap: 8px; user-select: none; }
+.section-header .chevron { transition: transform 0.2s; font-size: 10px; }
+.section-header .chevron.collapsed { transform: rotate(-90deg); }
+.section-body { overflow: hidden; transition: max-height 0.3s ease; }
+.section-body.collapsed { max-height: 0 !important; overflow: hidden; }
+
+/* Form grid */
+.form-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
+@media (max-width: 640px) { .form-grid { grid-template-columns: 1fr; } }
+.form-group { display: flex; flex-direction: column; }
+.form-group.full-width { grid-column: 1 / -1; }
+.form-group label { font-size: 12px; color: var(--fg2); margin-bottom: 4px; text-transform: uppercase; letter-spacing: 0.5px; }
+.form-group input, .form-group select { background: var(--bg3); border: 1px solid var(--border); color: var(--fg); padding: 8px 12px; border-radius: var(--radius); font-size: 13px; font-family: inherit; }
+.form-group input:focus, .form-group select:focus { outline: none; border-color: var(--accent); }
+.input-with-suffix { display: flex; align-items: center; gap: 0; }
+.input-with-suffix input { border-top-right-radius: 0; border-bottom-right-radius: 0; flex: 1; }
+.input-with-suffix .suffix { background: var(--bg4); border: 1px solid var(--border); border-left: none; padding: 8px 10px; border-radius: 0 var(--radius) var(--radius) 0; font-size: 12px; color: var(--fg2); white-space: nowrap; }
+.input-row { display: flex; gap: 8px; align-items: center; }
+
+/* Toggle switch */
+.toggle-wrap { display: flex; align-items: center; gap: 10px; height: 36px; }
+.toggle { position: relative; display: inline-block; width: 40px; height: 20px; flex-shrink: 0; }
+.toggle input { opacity: 0; width: 0; height: 0; position: absolute; }
+.toggle-slider { position: absolute; cursor: pointer; top: 0; left: 0; right: 0; bottom: 0; background: var(--bg4); border-radius: 20px; transition: background 0.2s; }
+.toggle-slider::before { content: ''; position: absolute; height: 14px; width: 14px; left: 3px; bottom: 3px; background: var(--fg); border-radius: 50%; transition: transform 0.2s; }
+.toggle input:checked + .toggle-slider { background: var(--green); }
+.toggle input:checked + .toggle-slider::before { transform: translateX(20px); }
+.toggle-label { font-size: 13px; color: var(--fg); }
+
+/* Range slider */
+.range-wrap { display: flex; align-items: center; gap: 10px; }
+.range-wrap input[type="range"] { flex: 1; accent-color: var(--accent); }
+.range-value { font-size: 13px; color: var(--fg); min-width: 32px; text-align: right; font-variant-numeric: tabular-nums; }
+
+/* Buttons */
+.btn { padding: 8px 16px; border-radius: var(--radius); border: 1px solid var(--border); background: var(--bg3); color: var(--fg); cursor: pointer; font-size: 13px; font-family: inherit; transition: background 0.15s; }
+.btn:hover { background: var(--bg4); }
+.btn-primary { background: #238636; border-color: #2ea043; color: #fff; }
+.btn-primary:hover { background: #2ea043; }
+.btn-danger { background: var(--red); border-color: var(--red); color: #fff; }
+.btn-danger:hover { opacity: 0.85; }
+.btn-sm { padding: 4px 10px; font-size: 12px; }
+.btn-test { padding: 8px 12px; font-size: 12px; white-space: nowrap; }
+
+/* Bottom bar */
+.bottom-bar { display: flex; justify-content: space-between; align-items: center; padding-top: 16px; border-top: 1px solid var(--border); margin-top: 8px; }
+.bottom-bar-left { display: flex; gap: 8px; }
+
+/* Key-value editor */
+.kv-editor { display: flex; flex-direction: column; gap: 8px; }
+.kv-row { display: flex; gap: 8px; align-items: center; }
+.kv-row input { background: var(--bg3); border: 1px solid var(--border); color: var(--fg); padding: 6px 10px; border-radius: var(--radius); font-size: 13px; font-family: inherit; }
+.kv-row input:focus { outline: none; border-color: var(--accent); }
+.kv-row .kv-key { width: 140px; flex-shrink: 0; }
+.kv-row .kv-val { flex: 1; }
+.kv-row .btn-delete { background: none; border: none; color: var(--red); cursor: pointer; font-size: 16px; padding: 4px 8px; border-radius: var(--radius); }
+.kv-row .btn-delete:hover { background: rgba(248,81,73,0.1); }
+.kv-add { align-self: flex-start; }
+
+/* Toast */
+.toast-container { position: fixed; bottom: 20px; right: 20px; z-index: 1000; display: flex; flex-direction: column; gap: 8px; }
+.toast { padding: 12px 20px; border-radius: var(--radius); font-size: 13px; color: #fff; animation: toast-in 0.3s ease, toast-out 0.3s ease 2.7s forwards; box-shadow: 0 4px 12px rgba(0,0,0,0.3); }
+.toast-success { background: #238636; }
+.toast-error { background: var(--red); }
+.toast-info { background: var(--accent); }
+@keyframes toast-in { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: translateY(0); } }
+@keyframes toast-out { from { opacity: 1; } to { opacity: 0; transform: translateY(-10px); } }
+
+/* Faces tab */
+.faces-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(240px, 1fr)); gap: 16px; }
+.face-card { background: var(--bg2); border: 1px solid var(--border); border-radius: var(--radius); padding: 16px; }
+.face-card-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px; }
+.face-name { font-weight: 600; font-size: 15px; cursor: pointer; border-bottom: 1px dashed transparent; }
+.face-name:hover { border-bottom-color: var(--accent); color: var(--accent); }
+.face-count { font-size: 11px; color: var(--fg2); }
+.face-thumbs { display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 10px; min-height: 40px; }
+.face-thumb { position: relative; width: 64px; height: 64px; border-radius: var(--radius); overflow: hidden; border: 1px solid var(--border); }
+.face-thumb img { width: 100%; height: 100%; object-fit: cover; }
+.face-thumb .thumb-delete { position: absolute; top: 2px; right: 2px; background: rgba(0,0,0,0.7); color: var(--red); border: none; border-radius: 50%; width: 18px; height: 18px; font-size: 12px; cursor: pointer; display: none; align-items: center; justify-content: center; line-height: 1; }
+.face-thumb:hover .thumb-delete { display: flex; }
+.empty-state { text-align: center; padding: 60px 20px; color: var(--fg2); }
+.empty-state p { margin-bottom: 16px; }
+
+/* Run tab */
+.run-options { display: flex; flex-wrap: wrap; gap: 16px; align-items: center; margin-bottom: 16px; }
+.run-options label { display: flex; align-items: center; gap: 6px; font-size: 13px; cursor: pointer; color: var(--fg2); }
+.run-options label:hover { color: var(--fg); }
+.run-options input[type="checkbox"] { accent-color: var(--accent); }
+.progress-bar-wrap { height: 4px; background: var(--bg3); border-radius: 2px; margin-bottom: 8px; overflow: hidden; }
+.progress-bar { height: 100%; background: var(--accent); border-radius: 2px; width: 0%; transition: width 0.3s ease; }
+.progress-bar.done { background: var(--green); }
+.progress-bar.error { background: var(--red); }
+.log-output { background: var(--bg); border: 1px solid var(--border); border-radius: var(--radius); padding: 12px; height: 400px; overflow-y: auto; font-family: 'Cascadia Code', 'Fira Code', 'Consolas', monospace; font-size: 12px; line-height: 1.6; white-space: pre-wrap; word-break: break-all; }
+.log-line { margin: 0; }
+.log-line.log-info { color: var(--fg2); }
+.log-line.log-progress { color: var(--fg); }
+.log-line.log-success { color: var(--green); }
+.log-line.log-error { color: var(--red); }
+.log-line.log-warn { color: var(--amber); }
+.log-line.log-step { color: var(--accent); font-weight: 600; }
+.run-buttons { display: flex; gap: 8px; margin-bottom: 16px; }
+.run-buttons .btn-primary { padding: 10px 28px; font-size: 14px; }
+.summary-card { background: var(--bg2); border: 1px solid var(--border); border-radius: var(--radius); padding: 20px; margin-top: 16px; }
+.summary-card h3 { font-size: 13px; text-transform: uppercase; letter-spacing: 0.5px; color: var(--fg2); margin-bottom: 12px; }
+.summary-stats { display: grid; grid-template-columns: repeat(auto-fill, minmax(120px, 1fr)); gap: 12px; margin-bottom: 16px; }
+.stat-item { text-align: center; }
+.stat-value { font-size: 22px; font-weight: 700; color: var(--accent); }
+.stat-label { font-size: 11px; color: var(--fg2); text-transform: uppercase; }
+.folder-list { display: flex; flex-wrap: wrap; gap: 6px; }
+.folder-tag { background: var(--bg3); border: 1px solid var(--border); border-radius: 12px; padding: 3px 10px; font-size: 11px; color: var(--fg2); }
+.folder-tag .folder-count { color: var(--accent); font-weight: 600; margin-left: 4px; }
+
+.hidden { display: none !important; }
+</style>
+</head>
+<body>
+
+<!-- Header -->
+<div class="header">
+  <div class="header-left">
+    <h1>AFS</h1>
+    <span>Agentic File Sorter</span>
+  </div>
+  <div class="header-center">
+    <button class="tab-btn active" data-tab="settings">Settings</button>
+    <button class="tab-btn" data-tab="faces">Faces</button>
+    <button class="tab-btn" data-tab="run">Run</button>
+  </div>
+  <div class="header-right">
+    <button class="theme-toggle" id="theme-toggle" title="Toggle theme"></button>
+    <span class="version-label" id="version-label">v-.-.-</span>
+  </div>
+</div>
+
+<!-- Status Bar -->
+<div class="status-bar" id="status-bar">
+  <div class="status-item" id="st-ollama"><span class="dot dot-red"></span> Ollama: checking...</div>
+  <div class="status-item" id="st-vision">Vision: --</div>
+  <div class="status-item" id="st-text">Text: --</div>
+  <div class="status-item" id="st-ffmpeg">ffmpeg: --</div>
+  <div class="status-item" id="st-faces">Faces: --</div>
+  <button class="refresh-btn" onclick="loadStatus()">Refresh</button>
+</div>
+
+<!-- Settings Tab -->
+<div class="container tab-content active" id="tab-settings">
+
+  <!-- Models Section -->
+  <div class="card">
+    <div class="section-header" onclick="toggleSection(this)">
+      <span class="chevron">&#9660;</span> Models
+    </div>
+    <div class="section-body">
+      <div class="form-grid">
+        <div class="form-group full-width">
+          <label for="cfg-ollama-url">Ollama URL</label>
+          <div class="input-row">
+            <input type="text" id="cfg-ollama-url" style="flex:1">
+            <button class="btn btn-test" onclick="testConnection()">Test Connection</button>
+          </div>
+        </div>
+        <div class="form-group">
+          <label for="cfg-vision-model">Vision Model</label>
+          <select id="cfg-vision-model"></select>
+        </div>
+        <div class="form-group">
+          <label for="cfg-text-model">Text Model</label>
+          <select id="cfg-text-model"></select>
+        </div>
+        <div class="form-group">
+          <label for="cfg-vision-timeout">Vision Timeout</label>
+          <div class="input-with-suffix">
+            <input type="number" id="cfg-vision-timeout" min="10" max="600">
+            <span class="suffix">seconds</span>
+          </div>
+        </div>
+        <div class="form-group">
+          <label for="cfg-text-timeout">Text Timeout</label>
+          <div class="input-with-suffix">
+            <input type="number" id="cfg-text-timeout" min="10" max="600">
+            <span class="suffix">seconds</span>
+          </div>
+        </div>
+        <div class="form-group">
+          <label for="cfg-vision-ctx">Vision Context</label>
+          <div class="input-with-suffix">
+            <input type="number" id="cfg-vision-ctx" min="512" max="131072" step="512">
+            <span class="suffix">tokens</span>
+          </div>
+        </div>
+        <div class="form-group">
+          <label for="cfg-text-ctx">Text Context</label>
+          <div class="input-with-suffix">
+            <input type="number" id="cfg-text-ctx" min="512" max="131072" step="512">
+            <span class="suffix">tokens</span>
+          </div>
+        </div>
+        <div class="form-group">
+          <label for="cfg-keep-alive">Keep Alive</label>
+          <input type="text" id="cfg-keep-alive" placeholder="e.g. 30m, 1h, 0">
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Processing Section -->
+  <div class="card">
+    <div class="section-header" onclick="toggleSection(this)">
+      <span class="chevron">&#9660;</span> Processing
+    </div>
+    <div class="section-body">
+      <div class="form-grid">
+        <div class="form-group">
+          <label>Sanitize Images (CDR)</label>
+          <div class="toggle-wrap">
+            <label class="toggle">
+              <input type="checkbox" id="cfg-sanitize-images">
+              <span class="toggle-slider"></span>
+            </label>
+            <span class="toggle-label" id="lbl-sanitize-images">Off</span>
+          </div>
+        </div>
+        <div class="form-group">
+          <label>Convert WebP</label>
+          <div class="toggle-wrap">
+            <label class="toggle">
+              <input type="checkbox" id="cfg-convert-webp">
+              <span class="toggle-slider"></span>
+            </label>
+            <span class="toggle-label" id="lbl-convert-webp">Off</span>
+          </div>
+        </div>
+        <div class="form-group">
+          <label for="cfg-chunk-size">Chunk Size</label>
+          <input type="number" id="cfg-chunk-size" min="1" max="200">
+        </div>
+        <div class="form-group">
+          <label>Confidence Threshold</label>
+          <div class="range-wrap">
+            <input type="range" id="cfg-confidence-threshold" min="0" max="1" step="0.05">
+            <span class="range-value" id="val-confidence-threshold">0.50</span>
+          </div>
+        </div>
+        <div class="form-group">
+          <label for="cfg-photo-threshold-mp">Photo Threshold</label>
+          <div class="input-with-suffix">
+            <input type="number" id="cfg-photo-threshold-mp" min="0" max="100" step="0.5">
+            <span class="suffix">MP</span>
+          </div>
+        </div>
+        <div class="form-group">
+          <label>Skip CDR for Photos</label>
+          <div class="toggle-wrap">
+            <label class="toggle">
+              <input type="checkbox" id="cfg-skip-cdr-photos">
+              <span class="toggle-slider"></span>
+            </label>
+            <span class="toggle-label" id="lbl-skip-cdr-photos">Off</span>
+          </div>
+        </div>
+        <div class="form-group">
+          <label>Identify Faces</label>
+          <div class="toggle-wrap">
+            <label class="toggle">
+              <input type="checkbox" id="cfg-identify-faces">
+              <span class="toggle-slider"></span>
+            </label>
+            <span class="toggle-label" id="lbl-identify-faces">Off</span>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Sorting Section -->
+  <div class="card">
+    <div class="section-header" onclick="toggleSection(this)">
+      <span class="chevron">&#9660;</span> Sorting
+    </div>
+    <div class="section-body">
+      <div class="form-grid">
+        <div class="form-group">
+          <label for="cfg-max-topics">Max Topics</label>
+          <input type="number" id="cfg-max-topics" min="1" max="100">
+        </div>
+        <div class="form-group">
+          <label for="cfg-max-topic-words">Max Topic Words</label>
+          <input type="number" id="cfg-max-topic-words" min="1" max="5">
+        </div>
+        <div class="form-group">
+          <label>Cleanup Empty Folders</label>
+          <div class="toggle-wrap">
+            <label class="toggle">
+              <input type="checkbox" id="cfg-cleanup-empty-folders">
+              <span class="toggle-slider"></span>
+            </label>
+            <span class="toggle-label" id="lbl-cleanup-empty-folders">Off</span>
+          </div>
+        </div>
+        <div class="form-group">
+          <label for="cfg-photo-sorting">Photo Sorting</label>
+          <select id="cfg-photo-sorting">
+            <option value="flat">Flat</option>
+            <option value="folders">Folders</option>
+          </select>
+        </div>
+        <div class="form-group full-width">
+          <label>Custom Folders</label>
+          <p style="font-size:11px;color:var(--fg3);margin-bottom:8px;">Folder name and comma-separated trigger keywords</p>
+          <div class="kv-editor" id="custom-folders-editor"></div>
+          <button class="btn btn-sm kv-add" onclick="addCustomFolderRow()" style="margin-top:8px;">+ Add Folder</button>
+        </div>
+        <div class="form-group full-width">
+          <label>Folder Aliases</label>
+          <p style="font-size:11px;color:var(--fg3);margin-bottom:8px;">Alias maps to canonical folder name</p>
+          <div class="kv-editor" id="folder-aliases-editor"></div>
+          <button class="btn btn-sm kv-add" onclick="addAliasRow()" style="margin-top:8px;">+ Add Alias</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Bottom bar -->
+  <div class="bottom-bar">
+    <div class="bottom-bar-left">
+      <button class="btn btn-primary" onclick="saveConfig()">Save Settings</button>
+      <button class="btn" onclick="resetDefaults()">Reset to Defaults</button>
+    </div>
+  </div>
+</div>
+
+<!-- Faces Tab -->
+<div class="container tab-content" id="tab-faces">
+  <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:16px;">
+    <h2 style="font-size:16px;font-weight:600;">Face Samples</h2>
+    <button class="btn btn-primary" onclick="addPerson()">+ Add Person</button>
+  </div>
+  <div id="faces-container"></div>
+</div>
+
+<!-- Run Tab -->
+<div class="container tab-content" id="tab-run">
+  <div class="card">
+    <div class="form-grid" style="margin-bottom:16px;">
+      <div class="form-group full-width">
+        <label for="run-input">Input Directory</label>
+        <input type="text" id="run-input" placeholder="C:\Users\...\Downloads\memes">
+      </div>
+      <div class="form-group full-width">
+        <label for="run-output">Output Directory (leave empty = same as input)</label>
+        <input type="text" id="run-output" placeholder="">
+      </div>
+    </div>
+    <div class="run-options">
+      <label><input type="checkbox" id="run-dry"> Dry Run</label>
+      <label><input type="checkbox" id="run-force"> Force Reprocess</label>
+      <label><input type="checkbox" id="run-no-sanitize"> Skip CDR</label>
+      <label><input type="checkbox" id="run-no-webp"> Skip WebP Convert</label>
+      <label><input type="checkbox" id="run-reface"> Reface Only</label>
+      <div class="form-group" style="flex-direction:row;align-items:center;gap:8px;">
+        <label for="run-max-files" style="margin:0;white-space:nowrap;">Max Files</label>
+        <input type="number" id="run-max-files" value="0" min="0" style="width:80px;background:var(--bg3);border:1px solid var(--border);color:var(--fg);padding:6px 10px;border-radius:var(--radius);font-size:13px;">
+      </div>
+    </div>
+    <div class="run-buttons">
+      <button class="btn btn-primary" id="btn-process" onclick="startProcess()">Process</button>
+      <button class="btn" onclick="startFlatten()">Flatten</button>
+    </div>
+    <div class="progress-bar-wrap"><div class="progress-bar" id="run-progress"></div></div>
+    <div class="log-output" id="run-log"></div>
+  </div>
+
+  <div class="summary-card hidden" id="run-summary">
+    <h3>Last Run Summary</h3>
+    <div class="summary-stats" id="summary-stats"></div>
+    <div id="summary-folders"></div>
+  </div>
+</div>
+
+<!-- Toast container -->
+<div class="toast-container" id="toast-container"></div>
+
+<script>
+/* ──────────────── State ──────────────── */
+let config = {};
+let models = [];
+let faces = {};
+let runEventSource = null;
+
+/* ──────────────── Tabs ──────────────── */
+document.querySelectorAll('.tab-btn').forEach(btn => {
+  btn.addEventListener('click', () => {
+    document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
+    document.querySelectorAll('.tab-content').forEach(t => t.classList.remove('active'));
+    btn.classList.add('active');
+    document.getElementById('tab-' + btn.dataset.tab).classList.add('active');
+    if (btn.dataset.tab === 'faces') loadFaces();
+  });
+});
+
+/* ──────────────── Theme ──────────────── */
+function applyTheme(theme) {
+  document.documentElement.classList.toggle('light', theme === 'light');
+  document.getElementById('theme-toggle').textContent = theme === 'light' ? '\u2600\uFE0F' : '\uD83C\uDF19';
+  localStorage.setItem('afs-theme', theme);
+}
+document.getElementById('theme-toggle').addEventListener('click', () => {
+  applyTheme(document.documentElement.classList.contains('light') ? 'dark' : 'light');
+});
+applyTheme(localStorage.getItem('afs-theme') || 'dark');
+
+/* ──────────────── Section Collapse ──────────────── */
+function toggleSection(header) {
+  const chevron = header.querySelector('.chevron');
+  const body = header.nextElementSibling;
+  if (body.classList.contains('collapsed')) {
+    body.style.maxHeight = body.scrollHeight + 'px';
+    body.classList.remove('collapsed');
+    chevron.classList.remove('collapsed');
+    setTimeout(() => { body.style.maxHeight = 'none'; }, 300);
+  } else {
+    body.style.maxHeight = body.scrollHeight + 'px';
+    requestAnimationFrame(() => {
+      body.style.maxHeight = '0';
+      body.classList.add('collapsed');
+      chevron.classList.add('collapsed');
+    });
+  }
+}
+
+/* ──────────────── Toast ──────────────── */
+function toast(msg, type) {
+  type = type || 'success';
+  const el = document.createElement('div');
+  el.className = 'toast toast-' + type;
+  el.textContent = msg;
+  document.getElementById('toast-container').appendChild(el);
+  setTimeout(() => { el.remove(); }, 3000);
+}
+
+/* ──────────────── Toggle label sync ──────────────── */
+function syncToggleLabel(id) {
+  const cb = document.getElementById(id);
+  const lbl = document.getElementById('lbl-' + id.replace('cfg-', ''));
+  if (cb && lbl) lbl.textContent = cb.checked ? 'On' : 'Off';
+}
+['cfg-sanitize-images','cfg-convert-webp','cfg-skip-cdr-photos','cfg-identify-faces','cfg-cleanup-empty-folders'].forEach(id => {
+  const el = document.getElementById(id);
+  if (el) el.addEventListener('change', () => syncToggleLabel(id));
+});
+
+/* ──────────────── Confidence slider ──────────────── */
+document.getElementById('cfg-confidence-threshold').addEventListener('input', function() {
+  document.getElementById('val-confidence-threshold').textContent = parseFloat(this.value).toFixed(2);
+});
+
+/* ──────────────── Status ──────────────── */
+async function loadStatus() {
+  try {
+    const r = await fetch('/api/status');
+    if (!r.ok) throw new Error('Status failed');
+    const s = await r.json();
+
+    // Ollama
+    const olEl = document.getElementById('st-ollama');
+    if (s.ollama) {
+      olEl.innerHTML = '<span class="dot dot-green"></span> Ollama: ONLINE';
+    } else {
+      olEl.innerHTML = '<span class="dot dot-red"></span> Ollama: OFFLINE';
+    }
+
+    // Vision model
+    document.getElementById('st-vision').textContent = 'Vision: ' + (s.vision_model || '--');
+    document.getElementById('st-text').textContent = 'Text: ' + (s.text_model || '--');
+
+    // ffmpeg
+    const ffEl = document.getElementById('st-ffmpeg');
+    if (s.ffmpeg) {
+      ffEl.innerHTML = '<span class="dot dot-green"></span> ffmpeg';
+    } else {
+      ffEl.innerHTML = '<span class="dot dot-red"></span> ffmpeg missing';
+    }
+
+    // Faces
+    const facesCount = s.face_samples || 0;
+    document.getElementById('st-faces').textContent = 'Faces: ' + facesCount + ' sample' + (facesCount !== 1 ? 's' : '');
+
+    // Version
+    if (s.version) document.getElementById('version-label').textContent = 'v' + s.version;
+  } catch (e) {
+    document.getElementById('st-ollama').innerHTML = '<span class="dot dot-red"></span> Ollama: ERROR';
+  }
+}
+
+/* ──────────────── Models List ──────────────── */
+async function loadModels() {
+  try {
+    const r = await fetch('/api/models');
+    if (!r.ok) throw new Error('Models fetch failed');
+    models = await r.json();
+  } catch {
+    models = [];
+  }
+  populateModelDropdowns();
+}
+
+function populateModelDropdowns() {
+  const visionSel = document.getElementById('cfg-vision-model');
+  const textSel = document.getElementById('cfg-text-model');
+  const visionVal = visionSel.value || (config.models && config.models.vision_model) || '';
+  const textVal = textSel.value || (config.models && config.models.text_model) || '';
+
+  [visionSel, textSel].forEach(sel => { sel.innerHTML = ''; });
+
+  const names = models.map(m => m.name || m.model || '').filter(Boolean);
+  // Ensure current values are in the list
+  [visionVal, textVal].forEach(v => {
+    if (v && !names.includes(v)) names.unshift(v);
+  });
+  const unique = [...new Set(names)];
+
+  unique.forEach(name => {
+    const o1 = document.createElement('option');
+    o1.value = name; o1.textContent = name;
+    visionSel.appendChild(o1);
+
+    const o2 = document.createElement('option');
+    o2.value = name; o2.textContent = name;
+    textSel.appendChild(o2);
+  });
+
+  if (unique.length === 0) {
+    const placeholder = document.createElement('option');
+    placeholder.value = ''; placeholder.textContent = '(no models found)';
+    visionSel.appendChild(placeholder.cloneNode(true));
+    textSel.appendChild(placeholder);
+  }
+
+  visionSel.value = visionVal;
+  textSel.value = textVal;
+}
+
+/* ──────────────── Config: Load ──────────────── */
+async function loadConfig() {
+  try {
+    const r = await fetch('/api/config');
+    config = await r.json();
+  } catch {
+    config = {};
+  }
+  populateForm(config);
+}
+
+function populateForm(cfg) {
+  const m = cfg.models || {};
+  const p = cfg.processing || {};
+  const s = cfg.sorting || {};
+
+  document.getElementById('cfg-ollama-url').value = m.ollama_url || '';
+  document.getElementById('cfg-vision-timeout').value = m.vision_timeout || 180;
+  document.getElementById('cfg-text-timeout').value = m.text_timeout || 120;
+  document.getElementById('cfg-vision-ctx').value = m.vision_ctx || 4096;
+  document.getElementById('cfg-text-ctx').value = m.text_ctx || 8192;
+  document.getElementById('cfg-keep-alive').value = m.keep_alive || '30m';
+
+  document.getElementById('cfg-sanitize-images').checked = p.sanitize_images !== false;
+  document.getElementById('cfg-convert-webp').checked = p.convert_webp !== false;
+  document.getElementById('cfg-chunk-size').value = p.chunk_size || 30;
+  document.getElementById('cfg-confidence-threshold').value = p.confidence_threshold || 0.5;
+  document.getElementById('val-confidence-threshold').textContent = (p.confidence_threshold || 0.5).toFixed(2);
+  document.getElementById('cfg-photo-threshold-mp').value = p.photo_threshold_mp || 4.0;
+  document.getElementById('cfg-skip-cdr-photos').checked = p.skip_cdr_photos !== false;
+  document.getElementById('cfg-identify-faces').checked = p.identify_faces !== false;
+
+  document.getElementById('cfg-max-topics').value = s.max_topics || 25;
+  document.getElementById('cfg-max-topic-words').value = s.max_topic_words || 2;
+  document.getElementById('cfg-cleanup-empty-folders').checked = s.cleanup_empty_folders !== false;
+  document.getElementById('cfg-photo-sorting').value = s.photo_sorting || 'flat';
+
+  // Sync toggle labels
+  ['cfg-sanitize-images','cfg-convert-webp','cfg-skip-cdr-photos','cfg-identify-faces','cfg-cleanup-empty-folders'].forEach(syncToggleLabel);
+
+  // Model dropdowns — set after models list loads
+  if (models.length > 0) {
+    populateModelDropdowns();
+  }
+  const visionSel = document.getElementById('cfg-vision-model');
+  const textSel = document.getElementById('cfg-text-model');
+  if (m.vision_model) visionSel.value = m.vision_model;
+  if (m.text_model) textSel.value = m.text_model;
+
+  // Custom folders
+  renderCustomFolders(s.custom_folders || {});
+  renderFolderAliases(s.folder_aliases || {});
+}
+
+/* ──────────────── Custom Folders KV Editor ──────────────── */
+function renderCustomFolders(obj) {
+  const container = document.getElementById('custom-folders-editor');
+  container.innerHTML = '';
+  Object.entries(obj).forEach(([key, val]) => {
+    addCustomFolderRow(key, Array.isArray(val) ? val.join(', ') : String(val));
+  });
+}
+
+function addCustomFolderRow(key, val) {
+  key = key || '';
+  val = val || '';
+  const container = document.getElementById('custom-folders-editor');
+  const row = document.createElement('div');
+  row.className = 'kv-row';
+  row.innerHTML = '<input type="text" class="kv-key" placeholder="folder name" value="' + escAttr(key) + '">' +
+    '<input type="text" class="kv-val" placeholder="keyword1, keyword2, ..." value="' + escAttr(val) + '">' +
+    '<button class="btn-delete" title="Remove">&times;</button>';
+  row.querySelector('.btn-delete').addEventListener('click', () => row.remove());
+  container.appendChild(row);
+}
+
+function collectCustomFolders() {
+  const rows = document.querySelectorAll('#custom-folders-editor .kv-row');
+  const result = {};
+  rows.forEach(row => {
+    const k = row.querySelector('.kv-key').value.trim();
+    const v = row.querySelector('.kv-val').value.trim();
+    if (k) result[k] = v.split(',').map(s => s.trim()).filter(Boolean);
+  });
+  return result;
+}
+
+/* ──────────────── Folder Aliases KV Editor ──────────────── */
+function renderFolderAliases(obj) {
+  const container = document.getElementById('folder-aliases-editor');
+  container.innerHTML = '';
+  Object.entries(obj).forEach(([key, val]) => {
+    addAliasRow(key, val);
+  });
+}
+
+function addAliasRow(key, val) {
+  key = key || '';
+  val = val || '';
+  const container = document.getElementById('folder-aliases-editor');
+  const row = document.createElement('div');
+  row.className = 'kv-row';
+  row.innerHTML = '<input type="text" class="kv-key" placeholder="alias" value="' + escAttr(key) + '">' +
+    '<input type="text" class="kv-val" placeholder="canonical name" value="' + escAttr(val) + '">' +
+    '<button class="btn-delete" title="Remove">&times;</button>';
+  row.querySelector('.btn-delete').addEventListener('click', () => row.remove());
+  container.appendChild(row);
+}
+
+function collectFolderAliases() {
+  const rows = document.querySelectorAll('#folder-aliases-editor .kv-row');
+  const result = {};
+  rows.forEach(row => {
+    const k = row.querySelector('.kv-key').value.trim();
+    const v = row.querySelector('.kv-val').value.trim();
+    if (k && v) result[k] = v;
+  });
+  return result;
+}
+
+function escAttr(s) {
+  return String(s).replace(/&/g,'&amp;').replace(/"/g,'&quot;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+}
+
+/* ──────────────── Config: Save ──────────────── */
+async function saveConfig() {
+  const cfg = {
+    models: {
+      ollama_url: document.getElementById('cfg-ollama-url').value.trim(),
+      vision_model: document.getElementById('cfg-vision-model').value,
+      text_model: document.getElementById('cfg-text-model').value,
+      vision_timeout: parseInt(document.getElementById('cfg-vision-timeout').value) || 180,
+      text_timeout: parseInt(document.getElementById('cfg-text-timeout').value) || 120,
+      vision_ctx: parseInt(document.getElementById('cfg-vision-ctx').value) || 4096,
+      text_ctx: parseInt(document.getElementById('cfg-text-ctx').value) || 8192,
+      keep_alive: document.getElementById('cfg-keep-alive').value.trim()
+    },
+    processing: {
+      sanitize_images: document.getElementById('cfg-sanitize-images').checked,
+      convert_webp: document.getElementById('cfg-convert-webp').checked,
+      chunk_size: parseInt(document.getElementById('cfg-chunk-size').value) || 30,
+      confidence_threshold: parseFloat(document.getElementById('cfg-confidence-threshold').value) || 0.5,
+      photo_threshold_mp: parseFloat(document.getElementById('cfg-photo-threshold-mp').value) || 4.0,
+      skip_cdr_photos: document.getElementById('cfg-skip-cdr-photos').checked,
+      identify_faces: document.getElementById('cfg-identify-faces').checked
+    },
+    sorting: {
+      max_topics: parseInt(document.getElementById('cfg-max-topics').value) || 25,
+      max_topic_words: parseInt(document.getElementById('cfg-max-topic-words').value) || 2,
+      cleanup_empty_folders: document.getElementById('cfg-cleanup-empty-folders').checked,
+      photo_sorting: document.getElementById('cfg-photo-sorting').value,
+      custom_folders: collectCustomFolders(),
+      folder_aliases: collectFolderAliases()
+    }
+  };
+
+  try {
+    const r = await fetch('/api/config', {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(cfg)
+    });
+    const data = await r.json();
+    if (data.ok) {
+      config = cfg;
+      toast('Settings saved');
+    } else {
+      toast('Save failed: ' + (data.error || 'unknown'), 'error');
+    }
+  } catch (e) {
+    toast('Save failed: ' + e.message, 'error');
+  }
+}
+
+/* ──────────────── Config: Reset ──────────────── */
+async function resetDefaults() {
+  if (!confirm('Reset all settings to defaults?')) return;
+  try {
+    const r = await fetch('/api/config/defaults');
+    const defaults = await r.json();
+    populateForm(defaults);
+    toast('Defaults loaded — click Save to apply', 'info');
+  } catch (e) {
+    toast('Failed to load defaults: ' + e.message, 'error');
+  }
+}
+
+/* ──────────────── Test Connection ──────────────── */
+async function testConnection() {
+  try {
+    const r = await fetch('/api/status');
+    const s = await r.json();
+    if (s.ollama) {
+      toast('Ollama is reachable');
+    } else {
+      toast('Ollama is offline', 'error');
+    }
+  } catch (e) {
+    toast('Connection test failed: ' + e.message, 'error');
+  }
+}
+
+/* ──────────────── Faces ──────────────── */
+async function loadFaces() {
+  try {
+    const r = await fetch('/api/faces');
+    faces = await r.json();
+  } catch {
+    faces = {};
+  }
+  renderFaces();
+}
+
+function renderFaces() {
+  const container = document.getElementById('faces-container');
+  const entries = Object.entries(faces);
+  if (entries.length === 0) {
+    container.innerHTML = '<div class="empty-state"><p>No face samples. Add a person and upload reference photos.</p></div>';
+    return;
+  }
+
+  let html = '<div class="faces-grid">';
+  entries.forEach(([name, files]) => {
+    html += '<div class="face-card">';
+    html += '<div class="face-card-header">';
+    html += '<span class="face-name" onclick="renamePerson(\'' + escAttr(name) + '\')" title="Click to rename">' + esc(name) + '</span>';
+    html += '<span class="face-count">' + files.length + ' sample' + (files.length !== 1 ? 's' : '') + '</span>';
+    html += '</div>';
+    html += '<div class="face-thumbs">';
+    files.forEach(file => {
+      html += '<div class="face-thumb">';
+      html += '<img src="/api/faces/' + encodeURIComponent(name) + '/' + encodeURIComponent(file) + '/image" alt="' + escAttr(file) + '" loading="lazy">';
+      html += '<button class="thumb-delete" onclick="deleteFaceSample(\'' + escAttr(name) + '\',\'' + escAttr(file) + '\')" title="Delete">&times;</button>';
+      html += '</div>';
+    });
+    html += '</div>';
+    html += '<button class="btn btn-sm" onclick="uploadFaceSample(\'' + escAttr(name) + '\')">Add Sample</button>';
+    html += '</div>';
+  });
+  html += '</div>';
+  container.innerHTML = html;
+}
+
+function esc(s) {
+  const d = document.createElement('div');
+  d.textContent = s;
+  return d.innerHTML;
+}
+
+async function addPerson() {
+  const name = prompt('Person name:');
+  if (!name || !name.trim()) return;
+  const clean = name.trim().toLowerCase().replace(/[^a-z0-9-]/g, '-').replace(/-+/g, '-');
+  try {
+    // Create by uploading a placeholder, then delete it — or just use an empty upload
+    // Actually, just trigger the file upload flow which will create the dir
+    uploadFaceSample(clean);
+  } catch (e) {
+    toast('Failed: ' + e.message, 'error');
+  }
+}
+
+function uploadFaceSample(name) {
+  const input = document.createElement('input');
+  input.type = 'file';
+  input.accept = 'image/*';
+  input.multiple = true;
+  input.onchange = async () => {
+    for (const file of input.files) {
+      try {
+        const buf = await file.arrayBuffer();
+        await fetch('/api/faces/' + encodeURIComponent(name), {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/octet-stream', 'X-Filename': file.name },
+          body: buf
+        });
+      } catch (e) {
+        toast('Upload failed: ' + e.message, 'error');
+      }
+    }
+    toast('Uploaded ' + input.files.length + ' sample(s)');
+    loadFaces();
+  };
+  input.click();
+}
+
+async function deleteFaceSample(name, file) {
+  if (!confirm('Delete ' + file + '?')) return;
+  try {
+    await fetch('/api/faces/' + encodeURIComponent(name) + '/' + encodeURIComponent(file), { method: 'DELETE' });
+    toast('Deleted');
+    loadFaces();
+  } catch (e) {
+    toast('Delete failed: ' + e.message, 'error');
+  }
+}
+
+async function renamePerson(oldName) {
+  const newName = prompt('Rename "' + oldName + '" to:', oldName);
+  if (!newName || !newName.trim() || newName.trim() === oldName) return;
+  try {
+    await fetch('/api/faces/' + encodeURIComponent(oldName), {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ newName: newName.trim() })
+    });
+    toast('Renamed to ' + newName.trim());
+    loadFaces();
+  } catch (e) {
+    toast('Rename failed: ' + e.message, 'error');
+  }
+}
+
+/* ──────────────── Run: Process ──────────────── */
+function startProcess() {
+  const input = document.getElementById('run-input').value.trim();
+  if (!input) { toast('Input directory required', 'error'); return; }
+
+  const body = {
+    input: input,
+    output: document.getElementById('run-output').value.trim() || undefined,
+    dryRun: document.getElementById('run-dry').checked,
+    force: document.getElementById('run-force').checked,
+    noSanitize: document.getElementById('run-no-sanitize').checked,
+    noConvertWebp: document.getElementById('run-no-webp').checked,
+    reface: document.getElementById('run-reface').checked,
+    maxFiles: parseInt(document.getElementById('run-max-files').value) || 0
+  };
+
+  const log = document.getElementById('run-log');
+  const bar = document.getElementById('run-progress');
+  log.innerHTML = '';
+  bar.style.width = '0%';
+  bar.className = 'progress-bar';
+  document.getElementById('btn-process').disabled = true;
+  document.getElementById('btn-process').textContent = 'Running...';
+
+  let totalFiles = 0;
+  let currentIndex = 0;
+
+  // Use fetch + ReadableStream for SSE
+  fetch('/api/run', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(body)
+  }).then(response => {
+    const reader = response.body.getReader();
+    const decoder = new TextDecoder();
+    let buffer = '';
+
+    function read() {
+      reader.read().then(({ done, value }) => {
+        if (done) {
+          finishRun();
+          return;
+        }
+        buffer += decoder.decode(value, { stream: true });
+        const lines = buffer.split('\n');
+        buffer = lines.pop(); // keep incomplete line in buffer
+
+        lines.forEach(line => {
+          line = line.trim();
+          if (line.startsWith('data: ')) {
+            const raw = line.slice(6);
+            try {
+              const evt = JSON.parse(raw);
+              handleRunEvent(evt);
+            } catch {
+              // not JSON, just show raw
+              appendLog(raw, 'log-info');
+            }
+          }
+        });
+        read();
+      }).catch(err => {
+        appendLog('Stream error: ' + err.message, 'log-error');
+        finishRun();
+      });
+    }
+    read();
+  }).catch(err => {
+    appendLog('Request failed: ' + err.message, 'log-error');
+    finishRun();
+  });
+
+  function handleRunEvent(evt) {
+    const e = evt.event || evt.type || '';
+
+    switch (e) {
+      case 'start':
+        totalFiles = evt.total || 0;
+        appendLog('Processing ' + totalFiles + ' files...', 'log-step');
+        if (evt.skipped) appendLog('(' + evt.skipped + ' already processed, skipped)', 'log-info');
+        break;
+
+      case 'warm':
+        appendLog('Loading model: ' + (evt.model || ''), 'log-info');
+        break;
+
+      case 'progress':
+        currentIndex = evt.index || currentIndex + 1;
+        const pct = totalFiles > 0 ? Math.round((currentIndex / totalFiles) * 100) : 0;
+        bar.style.width = pct + '%';
+        const kw = evt.keywords ? ' [' + (Array.isArray(evt.keywords) ? evt.keywords.join(', ') : evt.keywords) + ']' : '';
+        const statusClass = evt.status === 'error' ? 'log-error' : (evt.status === 'filtered' ? 'log-warn' : 'log-progress');
+        appendLog('[' + currentIndex + '/' + totalFiles + '] ' + (evt.status || '') + ': ' + (evt.file || '') + kw, statusClass);
+        break;
+
+      case 'step2a-start':
+        appendLog('Consolidating ' + (evt.folders || 0) + ' folders...', 'log-step');
+        break;
+
+      case 'step2a-done':
+        appendLog('Consolidated: ' + (evt.merges || 0) + ' merges, ' + (evt.folders_eliminated || 0) + ' eliminated', 'log-success');
+        break;
+
+      case 'resort-start':
+        appendLog('Re-sorting ' + (evt.files || 0) + ' files from junk folders...', 'log-step');
+        break;
+
+      case 'step2-start':
+        appendLog('Assigning files to folders... (' + (evt.files || 0) + ' files, ' + (evt.chunks || 1) + ' chunk(s))', 'log-step');
+        break;
+
+      case 'step2-chunk':
+        appendLog('  Chunk ' + evt.chunk + '/' + evt.of + ': ' + (evt.assigned || 0) + ' assigned, ' + (evt.folders_so_far || 0) + ' folders', 'log-info');
+        break;
+
+      case 'step2-done':
+        appendLog('Sorting complete: ' + (evt.assignments || 0) + ' assigned, ' + (evt.folders_created || 0) + ' folders', 'log-success');
+        break;
+
+      case 'step2-error':
+        appendLog('Step 2 error: ' + (evt.error || 'unknown'), 'log-error');
+        break;
+
+      case 'done':
+        bar.style.width = '100%';
+        bar.classList.add('done');
+        const elapsed = evt.ms ? (evt.ms / 1000).toFixed(1) + 's' : '';
+        appendLog('Done! ' + (evt.moved || 0) + ' moved, ' + (evt.errors || 0) + ' errors, ' + (evt.filtered || 0) + ' filtered' + (elapsed ? ' (' + elapsed + ')' : ''), 'log-success');
+        break;
+
+      case 'error':
+        appendLog('Error: ' + (evt.error || evt.message || JSON.stringify(evt)), 'log-error');
+        bar.classList.add('error');
+        break;
+
+      case 'exit':
+        if (evt.code !== 0) appendLog('Process exited with code ' + evt.code, 'log-warn');
+        break;
+
+      case 'log':
+        appendLog(evt.message || '', 'log-info');
+        break;
+
+      default:
+        // Unknown event type, show raw
+        appendLog(JSON.stringify(evt), 'log-info');
+    }
+  }
+
+  function finishRun() {
+    document.getElementById('btn-process').disabled = false;
+    document.getElementById('btn-process').textContent = 'Process';
+    // Try loading manifest
+    const outDir = body.output || body.input;
+    loadManifestSummary(outDir);
+  }
+}
+
+function appendLog(text, cls) {
+  cls = cls || 'log-info';
+  const log = document.getElementById('run-log');
+  const line = document.createElement('div');
+  line.className = 'log-line ' + cls;
+  line.textContent = text;
+  log.appendChild(line);
+  log.scrollTop = log.scrollHeight;
+}
+
+/* ──────────────── Run: Flatten ──────────────── */
+async function startFlatten() {
+  const input = document.getElementById('run-input').value.trim();
+  if (!input) { toast('Input directory required', 'error'); return; }
+
+  const log = document.getElementById('run-log');
+  log.innerHTML = '';
+  appendLog('Flattening directory: ' + input, 'log-step');
+
+  try {
+    const r = await fetch('/api/flatten', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ input: input, dryRun: document.getElementById('run-dry').checked })
+    });
+    const data = await r.json();
+    if (data.ok) {
+      appendLog(data.output || 'Flatten complete', 'log-success');
+      toast('Flatten complete');
+    } else {
+      appendLog('Flatten failed: ' + (data.error || 'unknown'), 'log-error');
+      toast('Flatten failed', 'error');
+    }
+  } catch (e) {
+    appendLog('Flatten error: ' + e.message, 'log-error');
+    toast('Flatten error', 'error');
+  }
+}
+
+/* ──────────────── Manifest Summary ──────────────── */
+async function loadManifestSummary(dir) {
+  const card = document.getElementById('run-summary');
+  try {
+    const r = await fetch('/api/manifest?dir=' + encodeURIComponent(dir));
+    const manifest = await r.json();
+    if (!manifest || !manifest.stats) {
+      card.classList.add('hidden');
+      return;
+    }
+
+    const s = manifest.stats;
+    const statsEl = document.getElementById('summary-stats');
+    const foldersEl = document.getElementById('summary-folders');
+
+    statsEl.innerHTML = [
+      statBox('Total', s.total),
+      statBox('Named', s.named),
+      statBox('Sorted', s.sorted),
+      statBox('Errors', s.errors, s.errors > 0 ? 'var(--red)' : ''),
+      statBox('Filtered', s.filtered),
+      statBox('CDR Applied', s.cdr_applied),
+      statBox('Avg Conf.', s.avg_confidence != null ? s.avg_confidence.toFixed(2) : '--'),
+      statBox('Folders', s.topic_folders)
+    ].join('');
+
+    // Build folder list from manifest entries
+    const folderCounts = {};
+    if (manifest.files || manifest.entries) {
+      (manifest.files || manifest.entries || []).forEach(f => {
+        if (f.folder) {
+          folderCounts[f.folder] = (folderCounts[f.folder] || 0) + 1;
+        }
+      });
+    }
+    // Also check the run block for any folder info
+    if (Object.keys(folderCounts).length > 0) {
+      foldersEl.innerHTML = '<div style="margin-top:8px;font-size:12px;color:var(--fg2);text-transform:uppercase;letter-spacing:0.5px;margin-bottom:6px;">Folders</div><div class="folder-list">' +
+        Object.entries(folderCounts).sort((a,b) => b[1]-a[1]).map(([name, count]) =>
+          '<span class="folder-tag">' + esc(name) + '<span class="folder-count">' + count + '</span></span>'
+        ).join('') + '</div>';
+    } else {
+      foldersEl.innerHTML = '';
+    }
+
+    card.classList.remove('hidden');
+  } catch {
+    card.classList.add('hidden');
+  }
+}
+
+function statBox(label, value, color) {
+  const style = color ? ' style="color:' + color + '"' : '';
+  return '<div class="stat-item"><div class="stat-value"' + style + '>' + (value != null ? value : '--') + '</div><div class="stat-label">' + label + '</div></div>';
+}
+
+/* ──────────────── Init ──────────────── */
+async function init() {
+  // Load everything in parallel
+  const [, ,] = await Promise.allSettled([
+    loadConfig(),
+    loadModels(),
+    loadStatus()
+  ]);
+  // Re-populate dropdowns now that both config and models are loaded
+  populateModelDropdowns();
+  if (config.models) {
+    if (config.models.vision_model) document.getElementById('cfg-vision-model').value = config.models.vision_model;
+    if (config.models.text_model) document.getElementById('cfg-text-model').value = config.models.text_model;
+  }
+}
+
+init();
+</script>
+</body>
+</html>

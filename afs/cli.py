@@ -63,6 +63,10 @@ def main():
     flat.add_argument("input", help="Directory to flatten")
     flat.add_argument("--dry-run", action="store_true", help="Preview without moving files")
 
+    # dashboard command
+    dash = sub.add_parser("dashboard", help="Open settings dashboard in browser")
+    dash.add_argument("--port", type=int, default=7860, help="Dashboard port (default: 7860)")
+
     args = parser.parse_args()
 
     if not args.command:
@@ -79,6 +83,45 @@ def main():
         _cmd_process(args, cfg)
     elif args.command == "flatten":
         _cmd_flatten(args)
+    elif args.command == "dashboard":
+        _cmd_dashboard(args)
+
+
+def _cmd_dashboard(args):
+    """Launch the settings dashboard in browser."""
+    import subprocess
+    import webbrowser
+
+    dashboard_dir = pathlib.Path(__file__).parent.parent / "dashboard"
+    server_js = dashboard_dir / "server.js"
+
+    if not server_js.exists():
+        print("Error: dashboard/server.js not found", file=sys.stderr)
+        sys.exit(EXIT_BAD_INPUT)
+
+    if not shutil.which("node"):
+        print("Error: Node.js not found. Install from https://nodejs.org", file=sys.stderr)
+        sys.exit(EXIT_BAD_INPUT)
+
+    # Install deps if needed
+    if not (dashboard_dir / "node_modules").exists():
+        print("  Installing dashboard dependencies...")
+        subprocess.run(["npm", "install"], cwd=str(dashboard_dir), check=True)
+
+    port = args.port
+    print(f"\n  AFS Dashboard: http://localhost:{port}\n  Press Ctrl+C to stop.\n")
+
+    proc = subprocess.Popen(
+        ["node", str(server_js), "--port", str(port)],
+        cwd=str(dashboard_dir),
+    )
+
+    try:
+        webbrowser.open(f"http://localhost:{port}")
+        proc.wait()
+    except KeyboardInterrupt:
+        proc.terminate()
+        print("\n  Dashboard stopped.")
 
 
 def _cmd_status(json_mode: bool, cfg: dict):
