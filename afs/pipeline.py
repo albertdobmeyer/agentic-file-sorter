@@ -313,11 +313,15 @@ def _process_batch_inner(
     else:
         prior_files, prior_timestamp = _load_prior_manifest(output_dir)
 
-    # Load face samples once (reused across all files)
+    # Load samples (only selected ones — if none selected, skip identification)
     face_samples: dict[str, list[str]] = {}
-    if cfg.get("processing", {}).get("identify_faces", True):
+    selected_samples = cfg.get("processing", {}).get("selected_samples", [])
+    if cfg.get("processing", {}).get("identify_faces", True) and selected_samples:
         from afs.faces import load_face_samples
-        face_samples = load_face_samples(config=cfg)
+        all_samples = load_face_samples(config=cfg)
+        # Filter to only selected samples
+        selected_lower = {s.lower() for s in selected_samples}
+        face_samples = {k: v for k, v in all_samples.items() if k in selected_lower}
 
     # Filter out already-sorted files
     new_files = []
@@ -382,6 +386,7 @@ def _process_batch_inner(
                 "status": result.status,
                 "dest": result.dest,
                 "topic": result.topic,
+                "phrase": result.phrase,
                 "keywords": result.keywords,
                 "confidence": result.confidence,
                 "method": result.method,

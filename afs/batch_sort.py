@@ -151,13 +151,13 @@ FILES TO SORT:
 {existing_block}{custom_block}{alias_block}
 RULES:
 1. Each file MUST appear in your response — do NOT skip any file
-2. Folder names: plural, kebab-case, max {max_topic_words} words (e.g. "animals", "reaction-memes")
-3. MAXIMUM {max_topics} topic folders total. Fewer is better — merge aggressively
-4. "filtered" is RESERVED — never use it
-5. If existing folders are listed, ALWAYS reuse them. DO NOT create synonyms (e.g. if "politics" exists, do NOT create "government" or "campaigns")
-6. DO NOT create folders that mean the same thing. Merge: politics/government/campaigns → politics. animals/cats/pets → animals
-7. Prefer BROAD topics. "politics" not "election-campaigns". "animals" not "cute-dogs". "science" not "quantum-physics"
-8. Every folder should have at LEAST 2 files. Do NOT create a folder for a single file — merge it into the closest existing folder instead
+2. NEVER create a folder with only 1 file. Every folder MUST have at least 2 files. If a file is the only one in its topic, put it in the closest related folder
+3. Folder names: plural, kebab-case, max {max_topic_words} words (e.g. "animals", "reaction-memes")
+4. MAXIMUM {max_topics} topic folders total. Fewer is better — merge aggressively
+5. "filtered" is RESERVED — never use it
+6. If existing folders are listed, ALWAYS reuse them. DO NOT create synonyms
+7. DO NOT create folders that mean the same thing. Merge related topics
+8. Prefer BROAD topics. "politics" not "campaigns". "animals" not "cute-dogs"
 9. If custom folders are listed, use them when keywords match any trigger word
 
 Respond with ONLY a JSON object mapping each filename to its folder:

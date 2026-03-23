@@ -199,7 +199,7 @@ body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; b
   </div>
   <div class="header-center">
     <button class="tab-btn active" data-tab="settings">Settings</button>
-    <button class="tab-btn" data-tab="faces">Faces</button>
+    <button class="tab-btn" data-tab="faces">Samples</button>
     <button class="tab-btn" data-tab="run">Run</button>
   </div>
   <div class="header-right">
@@ -335,7 +335,7 @@ body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; b
           </div>
         </div>
         <div class="form-group">
-          <label>Identify Faces <span class="tooltip" data-tip="When enabled and face samples exist, the vision model identifies named people in camera photos.">?</span></label>
+          <label>Identify Samples <span class="tooltip" data-tip="When enabled and samples exist, the vision model identifies named subjects (people, characters, objects) in images.">?</span></label>
           <div class="toggle-wrap">
             <label class="toggle">
               <input type="checkbox" id="cfg-identify-faces">
@@ -405,16 +405,16 @@ body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; b
   </div>
 </div>
 
-<!-- Faces Tab -->
+<!-- Samples Tab -->
 <div class="container tab-content" id="tab-faces">
   <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px;">
-    <h2 style="font-size:16px;font-weight:600;">Face Samples</h2>
-    <button class="btn btn-primary" onclick="addPerson()">+ Add Person</button>
+    <h2 style="font-size:16px;font-weight:600;">Sample Library</h2>
+    <button class="btn btn-primary" onclick="addPerson()">+ Add Sample</button>
   </div>
   <p class="help-text">
-    Upload clear, close-up face photos for each person you want AFS to recognize in camera photos.
-    Use well-lit frontal shots. Multiple samples per person improve accuracy (different angles, lighting, hair styles).
-    The person's name becomes part of the filename when they are identified.
+    Upload reference images for subjects you want AFS to identify: people (face close-ups), meme characters (Pepe, Wojak),
+    objects (landmarks, logos), or anything with a distinctive visual pattern. Use clear, well-lit images. Multiple samples
+    per subject improve accuracy. The subject's name becomes part of the filename when identified.
   </p>
   <div id="faces-container"></div>
 </div>
@@ -591,8 +591,8 @@ async function loadStatus() {
       const fr = await fetch('/api/faces');
       const faces = await fr.json();
       const facesCount = Object.values(faces).reduce((sum, arr) => sum + arr.length, 0);
-      document.getElementById('st-faces').textContent = 'Faces: ' + facesCount + ' sample' + (facesCount !== 1 ? 's' : '');
-    } catch { document.getElementById('st-faces').textContent = 'Faces: 0 samples'; }
+      document.getElementById('st-faces').textContent = 'Samples: ' + facesCount + ' loaded';
+    } catch { document.getElementById('st-faces').textContent = 'Samples: 0'; }
 
     // Version
     if (s.version) document.getElementById('version-label').textContent = 'v' + s.version;

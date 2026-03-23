@@ -47,17 +47,25 @@ _SEQUENCE_RE = re.compile(
 
 
 def is_likely_photo(path: pathlib.Path, config: dict | None = None) -> bool:
-    """Detect if a file is likely a camera photo (vs meme/screenshot).
+    """Detect if a file is likely a camera photo (vs meme/screenshot/artwork).
 
-    Uses three signals in order: EXIF metadata, resolution, filename pattern.
+    Detection logic:
+    - EXIF camera metadata (Make/Model) → definite photo (single signal sufficient)
+    - Camera filename pattern (IMG_, DSC_, PXL_) → definite photo (single signal sufficient)
+    - High resolution alone is NOT sufficient (artwork can be high-res too)
+    - High resolution + non-camera filename → NOT a photo
+
     Returns False on any error (safe default: apply CDR).
     """
     cfg = config or {}
     threshold_mp = cfg.get("processing", {}).get("photo_threshold_mp", 4.0)
 
+    has_exif = False
+    is_high_res = False
+
     try:
         with Image.open(path) as img:
-            # Signal 1: EXIF camera metadata (most reliable)
+            # Signal 1: EXIF camera metadata (most reliable — sufficient alone)
             exif = img.getexif()
             if exif:
                 make = exif.get(_EXIF_MAKE, "")
@@ -65,22 +73,24 @@ def is_likely_photo(path: pathlib.Path, config: dict | None = None) -> bool:
                 if make or model:
                     return True
 
-            # Signal 2: Resolution check (memes are <2MP, photos are 8-50MP)
+            # Signal 2: Resolution (not sufficient alone — artwork can be high-res)
             w, h = img.size
             megapixels = (w * h) / 1_000_000
-            if megapixels >= threshold_mp:
-                return True
+            is_high_res = megapixels >= threshold_mp
 
     except Exception:
-        pass  # corrupt file, non-image — fall through to filename check
+        pass
 
-    # Signal 3: Camera filename pattern
+    # Signal 3: Camera filename pattern (sufficient alone)
     stem = path.stem
     if CAMERA_FILENAME_RE.match(stem):
-        # Exclude screenshots
         if stem.lower().startswith("screenshot"):
             return False
         return True
+
+    # High resolution alone is NOT enough — could be artwork or scanned image
+    # Only flag as photo if there's at least one other weak signal
+    return False
 
     return False
 

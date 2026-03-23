@@ -1,11 +1,12 @@
-"""Face recognition via sample images — zero new dependencies.
+"""Sample-based identification — zero new dependencies.
 
-Users place face samples in faces/ directory. Two conventions supported:
-  - Flat:   faces/albert.jpg              → one sample for "albert"
-  - Subdir: faces/tori/green.jpg, red.jpg → multiple samples for "tori"
+Users place reference samples in samples/ directory. Two conventions supported:
+  - Flat:   samples/hatman.png                    → one sample for "hatman"
+  - Subdir: samples/tori/green.jpg, red.jpg       → multiple samples for "tori"
 
-The vision model receives the target photo + all reference images and
-identifies which named people appear. Uses Ollama's multi-image API.
+Supports any visual pattern: people, meme characters, objects, landmarks.
+The vision model receives the target image + all reference samples and
+identifies which named subjects appear. Uses Ollama's multi-image API.
 """
 
 import base64
@@ -129,18 +130,20 @@ def identify_faces(
     ref_block = "\n".join(ref_lines)
 
     prompt = f"""/no_think
-Image 1 is a TARGET photo. The remaining images are reference faces:
+Image 1 is the TARGET image. The remaining images are reference samples:
 {ref_block}
 
-Which of the named people (if any) appear in Image 1 (the TARGET)?
+Does the TARGET image contain the SAME SPECIFIC subject as any reference sample?
+A match means the EXACT SAME person, character, or object — not just something similar.
 
 RULES:
-- ONLY identify people you are confident about
-- Compare FACIAL FEATURES (eyes, nose, mouth, face shape) not hair color or clothing
-- A person may look different across reference images — that is intentional
-- Return ONLY a JSON object: {{"people": ["name1", "name2"]}}
-- If no named people appear, return: {{"people": []}}
-- Do NOT guess — if unsure, do not include the name"""
+- A match requires the SAME SPECIFIC individual/character/object, not just the same category
+- A reference photo of "frog" means THAT specific frog — not any frog
+- A reference photo of "tori" means THAT specific person — not any woman
+- If the target shows a DIFFERENT person/character/object of the same type, that is NOT a match
+- When in doubt, return empty. False negatives are better than false positives
+- Return ONLY a JSON object: {{"identified": ["name1", "name2"]}}
+- If no exact matches, return: {{"identified": []}}"""
 
     try:
         resp = requests.post(
@@ -164,13 +167,14 @@ RULES:
     if not data or not isinstance(data, dict):
         return []
 
-    people = data.get("people", [])
-    if not isinstance(people, list):
+    # Accept both "identified" (new) and "people" (legacy) keys
+    matched = data.get("identified", data.get("people", []))
+    if not isinstance(matched, list):
         return []
 
     # Validate: only return names that match our samples
     valid_names = {n.lower() for n in names}
-    return [str(p).lower().strip() for p in people
+    return [str(p).lower().strip() for p in matched
             if str(p).lower().strip() in valid_names]
 
 

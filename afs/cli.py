@@ -53,6 +53,10 @@ def main():
         "--reface", action="store_true",
         help="Re-run face identification only (skip vision analysis, reuse manifest keywords)",
     )
+    proc.add_argument(
+        "--samples", type=str, default="",
+        help="Comma-separated sample names to compare against (e.g. --samples tori,pepe). Without this, no sample identification runs.",
+    )
 
     # status command
     stat = sub.add_parser("status", help="Check Ollama connectivity and model availability")
@@ -213,6 +217,11 @@ def _cmd_process(args, cfg: dict):
         if args.no_convert_webp:
             convert_webp = False
 
+        # --samples flag: select which samples to compare against
+        if args.samples:
+            selected = [s.strip() for s in args.samples.split(",") if s.strip()]
+            cfg.setdefault("processing", {})["selected_samples"] = selected
+
         # Delete manifest if --force
         if args.force:
             manifest_path = output_dir / ".afs-manifest.json"
@@ -286,8 +295,8 @@ def _print_human(event: dict):
             topic = event.get("topic", "")
             print(f"  [{event['index']}/{total}] T{tier} {status}: {name} -> {topic}/{dest}{ident}")
         elif status == "NAMED":
-            kw = ", ".join(event.get("keywords", [])[:3])
-            print(f"  [{event['index']}/{total}] T{tier} {status}: {name} [{kw}]{ident}{photo_tag}")
+            desc = event.get("phrase") or ", ".join(event.get("keywords", [])[:3])
+            print(f"  [{event['index']}/{total}] T{tier} {status}: {name} [{desc}]{ident}{photo_tag}")
         elif event.get("error"):
             err_type = event.get("error_type", "")
             print(f"  [{event['index']}/{total}] T{tier} {status}: {name} -- [{err_type}] {event['error']}")
