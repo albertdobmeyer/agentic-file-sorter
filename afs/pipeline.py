@@ -331,8 +331,19 @@ def _process_batch_inner(
     face_samples: dict[str, str] = {}  # {name: description_text}
     selected_samples = cfg.get("processing", {}).get("selected_samples", [])
     if cfg.get("processing", {}).get("identify_faces", True) and selected_samples:
-        from afs.samples import load_sample_descriptions
+        from afs.samples import load_sample_descriptions, describe_sample, list_samples
         face_samples = load_sample_descriptions(config=cfg, selected=selected_samples)
+
+        # Auto-generate descriptions for samples that don't have them yet
+        available = list_samples(config=cfg)
+        for name in selected_samples:
+            name_lower = name.lower()
+            if name_lower in available and name_lower not in face_samples:
+                if on_event:
+                    on_event({"event": "log", "message": f"Generating description for sample: {name_lower}"})
+                result = describe_sample(name_lower, config=cfg)
+                if result.get("description"):
+                    face_samples[name_lower] = result["description"]
 
     # Filter out already-sorted files
     new_files = []
@@ -694,14 +705,18 @@ def reface_batch(
     config: dict | None = None,
     on_event: Callable[[dict], None] | None = None,
 ) -> BatchResult:
-    """Re-run face identification only — skip vision analysis, reuse manifest keywords.
+    """Re-identify files using text-description matching — no vision re-analysis.
 
-    Loads the prior manifest, re-runs identify_faces() on photos with updated
-    face samples, and renames files if the identification changed.
+    Reads the existing manifest, generates a preview for each file,
+    runs a single-image vision call WITH sample descriptions as text context,
+    and renames files if a new subject is identified. Does NOT re-sort into folders.
+
+    Works on ALL file types (not just photos) — memes, cartoons, anything.
     """
-    from afs.faces import load_face_samples, identify_faces, has_face_samples
     from afs.preview import generate_preview
-    from afs.naming import generate_name
+    from afs.naming import generate_name_from_phrase, generate_name
+    from afs.samples import load_sample_descriptions, describe_sample, list_samples
+    from afs.hashing import match_known_subjects, load_known_subjects
 
     cfg = config or {}
     start = time.time()
@@ -714,106 +729,140 @@ def reface_batch(
             on_event({"event": "error", "error": "No manifest found — run process first"})
         return batch
 
-    # Load face samples (required)
-    face_samples = load_face_samples(config=cfg)
-    if not face_samples:
+    # Load sample descriptions (required)
+    selected_samples = cfg.get("processing", {}).get("selected_samples", [])
+    if not selected_samples:
         if on_event:
-            on_event({"event": "error", "error": "No face samples found in faces/ directory"})
+            on_event({"event": "error", "error": "No samples selected — use --samples name1,name2"})
         return batch
 
-    # Filter to photo entries only
-    photo_entries = {name: entry for name, entry in prior_files.items()
-                     if entry.get("photo_detected")}
+    sample_descriptions = load_sample_descriptions(config=cfg, selected=selected_samples)
+
+    # Auto-generate descriptions for samples that don't have them yet
+    available = list_samples(config=cfg)
+    for name in selected_samples:
+        name_lower = name.lower()
+        if name_lower in available and name_lower not in sample_descriptions:
+            if on_event:
+                on_event({"event": "log", "message": f"Generating description for sample: {name_lower}"})
+            result = describe_sample(name_lower, config=cfg)
+            if result.get("description"):
+                sample_descriptions[name_lower] = result["description"]
+
+    if not sample_descriptions:
+        if on_event:
+            on_event({"event": "error", "error": "No sample descriptions available"})
+        return batch
+
+    # Load hash DB for Layer 2
+    hash_db = load_known_subjects()
+
+    # Process ALL manifest entries (not just photos)
+    entries = {name: entry for name, entry in prior_files.items()
+               if entry.get("status") in ("moved", "dry-run", "named", "renamed")
+               and not entry.get("error")}
 
     if on_event:
         on_event({
             "event": "start",
-            "total": len(photo_entries),
-            "skipped": len(prior_files) - len(photo_entries),
+            "total": len(entries),
+            "skipped": len(prior_files) - len(entries),
             "input": str(input_dir),
             "output": str(output_dir),
         })
 
-    batch.total = len(photo_entries)
+    batch.total = len(entries)
     updated = 0
+    valid_sample_names = {n.lower() for n in sample_descriptions.keys()}
 
-    for i, (name, entry) in enumerate(sorted(photo_entries.items()), 1):
-        # Find the file on disk (may have been renamed)
+    for i, (name, entry) in enumerate(sorted(entries.items()), 1):
         file_name = entry.get("name", name)
         folder = entry.get("folder", "")
-        if folder and folder != "photos":
+
+        # Find file on disk
+        if folder and folder not in ("photos", "filtered"):
             file_path = output_dir / folder / file_name
         else:
             file_path = output_dir / file_name
-
-        # Try input dir if not found in output
         if not file_path.exists():
             file_path = input_dir / file_name
         if not file_path.exists():
-            # Search recursively
             matches = list(output_dir.rglob(file_name))
             file_path = matches[0] if matches else None
 
         if not file_path or not file_path.exists():
-            batch.errors += 1
             if on_event:
                 on_event({"event": "progress", "index": i, "total": batch.total,
-                          "file": file_name, "status": "ERROR", "error": "file not found"})
+                          "file": file_name, "status": "SKIP", "error": "file not found"})
             continue
 
-        # Generate preview for face identification
+        # Layer 2: quick hash check
+        hash_matches = match_known_subjects(file_path, hash_db) if hash_db.get("subjects") else []
+        enriched = dict(sample_descriptions)
+        for match_name, match_dist, match_entry in hash_matches[:3]:
+            if match_name not in enriched and match_entry.get("description"):
+                enriched[match_name] = f"{match_entry['description']} [hash match]"
+
+        # Generate preview
         tier = entry.get("tier", 1)
         preview_path = generate_preview(file_path, tier)
         if not preview_path:
-            batch.errors += 1
             continue
 
-        # Run face identification with updated samples
-        matched_names = identify_faces(preview_path, face_samples, config=cfg)
+        # Single vision call with sample descriptions as text context
+        analysis = analyze_vision(
+            preview_path, filename_hint=file_path.stem,
+            config=config, sample_descriptions=enriched,
+        )
         _cleanup(preview_path)
 
-        old_identified = entry.get("identified") or ""
-        new_identified = ", ".join(matched_names) if matched_names else ""
+        new_identified = analysis.get("identified")
+        # Validate against selected samples
+        if new_identified and new_identified.lower() not in valid_sample_names:
+            new_identified = None
 
-        # Check if identification changed
-        if new_identified == old_identified:
+        old_identified = entry.get("identified") or ""
+
+        if not new_identified or new_identified == old_identified:
             if on_event:
                 on_event({"event": "progress", "index": i, "total": batch.total,
                           "file": file_name, "status": "UNCHANGED"})
             continue
 
-        # Update keywords with new face matches
-        keywords = list(entry.get("keywords", []))
-        # Remove old face names from keywords
-        if old_identified:
-            old_names = {n.strip().lower() for n in old_identified.split(",")}
-            keywords = [kw for kw in keywords if kw.lower() not in old_names]
-        # Prepend new face names
-        for fname in reversed(matched_names):
-            if fname.lower() not in [kw.lower() for kw in keywords]:
-                keywords.insert(0, fname.lower())
-        keywords = keywords[:5]
+        # Build updated phrase: prepend identified name to existing phrase
+        old_phrase = entry.get("phrase", "")
+        new_phrase = old_phrase
+        if new_identified.lower() not in new_phrase.lower():
+            new_phrase = f"{new_identified} {new_phrase}".strip()
 
-        # Generate new filename
+        # Generate new filename from updated phrase
         ext = file_path.suffix.lower()
-        new_stem = generate_name(keywords, original_stem=file_path.stem)
+        if new_phrase:
+            new_stem = generate_name_from_phrase(new_phrase, original_stem=file_path.stem)
+        else:
+            keywords = list(entry.get("keywords", []))
+            keywords.insert(0, new_identified.lower())
+            new_stem = generate_name(keywords[:5], original_stem=file_path.stem)
+
         new_dest = file_path.parent / f"{new_stem}{ext}"
-        new_dest = deduplicate_path(new_dest)
+        if new_dest.exists() and new_dest.resolve() == file_path.resolve():
+            pass  # same file
+        else:
+            new_dest = deduplicate_path(new_dest)
 
         moved = move_file(file_path, new_dest, dry_run=dry_run)
 
         # Update manifest entry
         entry["name"] = new_dest.name
-        entry["keywords"] = keywords
-        entry["identified"] = new_identified or None
+        entry["phrase"] = new_phrase
+        entry["identified"] = new_identified
         updated += 1
         batch.moved += 1
 
         if on_event:
-            ident_tag = f" [{new_identified}]" if new_identified else ""
             on_event({"event": "progress", "index": i, "total": batch.total,
                       "file": file_name, "status": "RENAMED",
-                      "dest": str(new_dest), "identified": new_identified})
+                      "dest": new_dest.name, "identified": new_identified})
 
     batch.elapsed_ms = _elapsed(start)
 
@@ -824,28 +873,26 @@ def reface_batch(
             "moved": updated,
             "errors": batch.errors,
             "filtered": 0,
-            "skipped": len(prior_files) - len(photo_entries),
+            "skipped": len(prior_files) - len(entries),
             "ms": batch.elapsed_ms,
         })
 
     # Rewrite manifest with updated entries
     manifest_path = output_dir / ".afs-manifest.json"
-    if manifest_path.exists() and (updated > 0 or dry_run):
+    if manifest_path.exists() and updated > 0:
         try:
             manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
-            # Update file entries in manifest
             for file_entry in manifest.get("files", []):
-                source = file_entry.get("source", "")
-                name = pathlib.Path(source).name
-                if name in prior_files:
-                    updated_entry = prior_files[name]
-                    file_entry["name"] = updated_entry.get("name", file_entry.get("name"))
-                    file_entry["keywords"] = updated_entry.get("keywords", file_entry.get("keywords"))
-                    file_entry["identified"] = updated_entry.get("identified", file_entry.get("identified"))
+                source_name = pathlib.Path(file_entry.get("source", "")).name
+                if source_name in prior_files:
+                    up = prior_files[source_name]
+                    file_entry["name"] = up.get("name", file_entry.get("name"))
+                    file_entry["phrase"] = up.get("phrase", file_entry.get("phrase"))
+                    file_entry["identified"] = up.get("identified")
             manifest["run"]["timestamp"] = datetime.datetime.now().isoformat(timespec="seconds")
             manifest_path.write_text(json.dumps(manifest, indent=2), encoding="utf-8")
         except Exception:
-            pass  # best-effort manifest update
+            pass
 
     return batch
 

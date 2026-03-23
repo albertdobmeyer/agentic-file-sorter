@@ -245,7 +245,12 @@ def _cmd_process(args, cfg: dict):
         else:
             _print_human(event)
 
-    # --reface: lightweight face re-identification only
+    # --samples flag: select which samples to compare against (applies to both process and reface)
+    if args.samples:
+        selected = [s.strip() for s in args.samples.split(",") if s.strip()]
+        cfg.setdefault("processing", {})["selected_samples"] = selected
+
+    # --reface: lightweight re-identification only (uses text descriptions, not vision re-analysis)
     if args.reface:
         batch = reface_batch(
             input_dir=input_dir,
@@ -262,11 +267,6 @@ def _cmd_process(args, cfg: dict):
             sanitize = False
         if args.no_convert_webp:
             convert_webp = False
-
-        # --samples flag: select which samples to compare against
-        if args.samples:
-            selected = [s.strip() for s in args.samples.split(",") if s.strip()]
-            cfg.setdefault("processing", {})["selected_samples"] = selected
 
         # Delete manifest if --force
         if args.force:
