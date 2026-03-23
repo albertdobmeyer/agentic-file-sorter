@@ -23,9 +23,6 @@ from afs.types_ import FileResult, BatchResult, classify_tier
 from afs.preview import apply_cdr, generate_preview
 from afs.analyze import (
     analyze_vision,
-    needs_identification,
-    identify_character,
-    enhance_with_character,
     ERR_FILE_READ,
 )
 from afs.naming import deduplicate_path
@@ -153,13 +150,14 @@ def process_file(
         identified = analysis.get("identified")
         result.method = "vision"
 
-        # Validate: identified must match a selected sample name (reject hallucinations)
+        # Validate identified: if samples are selected, must match a sample name
+        # If no samples selected, trust built-in character/celebrity identification
         if identified and face_samples:
             valid_names = {n.lower() for n in face_samples.keys()}
             if identified.lower() not in valid_names:
-                identified = None  # hallucinated name, discard
+                identified = None  # not a selected sample — discard
 
-        # If vision model identified a sample subject, prepend to phrase
+        # If identified, prepend to phrase and keywords
         if identified:
             if identified.lower() not in phrase.lower():
                 phrase = f"{identified} {phrase}".strip()
@@ -167,14 +165,6 @@ def process_file(
                 keywords.insert(0, identified.lower())
                 keywords = keywords[:5]
             confidence = max(confidence, 0.8)
-
-        # Character identification fallback (if no sample match and generic result)
-        if not identified and not is_photo and needs_identification(topic, keywords, confidence, config=config):
-            char_name = identify_character(preview_path, config=config)
-            if char_name:
-                identified = char_name
-                phrase, keywords = enhance_with_character(phrase, keywords, char_name)
-                confidence = max(confidence, 0.7)
 
         # Photo sequence: append to phrase (always at end for consistent naming)
         if is_photo:

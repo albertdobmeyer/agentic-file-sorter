@@ -85,20 +85,16 @@ def analyze_vision(
             lines.append(f"  - {name}: {desc}")
         sample_block = "\n".join(lines)
         sample_context = (
-            f"\nKNOWN SUBJECTS (identify if any appear in this image):\n"
+            f"\nCUSTOM SUBJECTS (identify if any appear in this image):\n"
             f"{sample_block}\n"
-            f"If you recognize any of these SPECIFIC subjects, set \"identified\" to their name.\n"
         )
-
-    identified_field = ""
-    if sample_descriptions:
-        identified_field = '\n  "identified": "name of recognized subject or null",'
 
     prompt = f"""Analyze this image and respond with ONLY a JSON object (no other text):
 {{
   "topic": "single PLURAL word — the broad category (e.g. politics, animals, science, vehicles, memes, comics, games, sports, architecture, nature, food, religion, mythology, history, finance, technology, education, emotions, celebrities, maps, code, documents, music, configs)",
   "phrase": "a short natural description (2-7 words) for a filename",
-  "keywords": ["2-4 topic words for folder classification"],{identified_field}
+  "identified": "name of recognized character, celebrity, or custom subject — or null",
+  "keywords": ["2-4 topic words for folder classification"],
   "confidence": 0.0 to 1.0
 }}
 {filename_context}{photo_context}{sample_context}
@@ -109,13 +105,21 @@ CRITICAL RULES:
   BAD: "shepherd tree alps sleeping green", "cat flower crown festival"
 - Use connective words (in, at, with, under, on, of, and) to make the phrase read naturally
 - Structure the phrase as: [main subject] [action or relationship] [context or location]
-- If you recognize a SPECIFIC character (SpongeBob, Pepe, Wojak, etc.), START the phrase with their name
-- If you recognize a SPECIFIC person, START the phrase with their name
+- "identified": if you recognize a SPECIFIC character, celebrity, or custom subject, set this to their name. Otherwise set to null
+- If identified, START the phrase with their name: "pepe celebrating with friends", "elon musk at conference"
 - NEVER use these words in phrase or keywords: "image", "photo", "photograph", "picture", "person", "individual", "subject"
 - Instead of "person" use: "man", "woman", "child", "couple", "group", "crowd"
 - "keywords" are for folder classification ONLY — short topic words, NOT the filename
 - Each keyword must add UNIQUE information — no synonyms
-- If this looks like a text document or code, still analyze the CONTENT visible"""
+- If this looks like a text document or code, still analyze the CONTENT visible
+{sample_context}
+KNOWN CHARACTERS AND CELEBRITIES (use "identified" if you recognize any):
+Memes: Pepe the Frog, Wojak, Trollface, Chad, Gigachad, Soyjak, NPC, Doge, Shiba Inu, Amogus, Among Us, Nyan Cat, Grumpy Cat, Harambe, Rickroll, Disaster Girl, Bad Luck Brian, Hide the Pain Harold, Distracted Boyfriend, This Is Fine Dog, Stonks, Dogecoin, Keyboard Cat, Ceiling Cat, Philosoraptor, Advice Dog, Scumbag Steve, Good Guy Greg, Overly Attached Girlfriend, Success Kid, Drake meme, Expanding Brain, Woman Yelling at Cat, Two Buttons, Change My Mind
+Cartoons: SpongeBob, Patrick Star, Squidward, Homer Simpson, Bart Simpson, Marge Simpson, Lisa Simpson, Peter Griffin, Stewie Griffin, Brian Griffin, Rick Sanchez, Morty Smith, Bender, Fry, Leela, Bugs Bunny, Daffy Duck, Tom, Jerry, Scooby-Doo, Shaggy, Mickey Mouse, Donald Duck, Goofy, Pluto, Winnie the Pooh, Tigger, Elmo, Cookie Monster, Kermit the Frog, Big Bird, Oscar the Grouch, Garfield, Odie, Shrek, Donkey, Puss in Boots, Finn the Human, Jake the Dog, Dexter, Johnny Bravo, Courage the Cowardly Dog, Ed Edd n Eddy, Powerpuff Girls, Samurai Jack
+Video Games: Mario, Luigi, Princess Peach, Bowser, Toad, Yoshi, Wario, Waluigi, Pikachu, Charizard, Sonic the Hedgehog, Tails, Knuckles, Link, Zelda, Ganondorf, Kirby, Master Chief, Kratos, Steve (Minecraft), Creeper, Sans (Undertale), Pac-Man, Mega Man, Lara Croft, Gordon Freeman
+Superheroes: Spider-Man, Batman, Superman, Iron Man, Captain America, Thor, Hulk, Black Widow, Wonder Woman, Deadpool, Wolverine, Thanos, Joker, Harley Quinn, Venom, Black Panther, Doctor Strange, Aquaman, Flash, Green Lantern
+Movies/TV: Darth Vader, Yoda, Baby Yoda, Grogu, Stormtrooper, Gandalf, Gollum, Jack Sparrow, John Wick, Walter White, Jesse Pinkman, Michael Scott, Dwight Schrute, Jon Snow, Daenerys, Minion, Buzz Lightyear, Woody, Elsa, Olaf
+Celebrities: Elon Musk, Donald Trump, Barack Obama, Joe Biden, Kanye West, Kim Kardashian, Taylor Swift, Beyonce, Drake, Snoop Dogg, Dwayne Johnson, Keanu Reeves, Morgan Freeman, Samuel L Jackson, Arnold Schwarzenegger, Nicolas Cage, Jeff Bezos, Mark Zuckerberg, Bill Gates, Steve Jobs, Albert Einstein, Nikola Tesla"""
 
     try:
         resp = requests.post(
