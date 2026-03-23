@@ -71,6 +71,11 @@ def main():
     dash = sub.add_parser("dashboard", help="Open settings dashboard in browser")
     dash.add_argument("--port", type=int, default=7860, help="Dashboard port (default: 7860)")
 
+    # check-samples command
+    chk = sub.add_parser("check-samples", help="Evaluate sample image quality and generate descriptions")
+    chk.add_argument("name", nargs="?", help="Specific sample group to check (optional, default: all)")
+    chk.add_argument("--config", type=str, default=None, help="Path to afs-config.json")
+
     args = parser.parse_args()
 
     if not args.command:
@@ -83,12 +88,53 @@ def main():
 
     if args.command == "status":
         _cmd_status(args.json, cfg)
+    elif args.command == "check-samples":
+        _cmd_check_samples(args, cfg)
     elif args.command == "process":
         _cmd_process(args, cfg)
     elif args.command == "flatten":
         _cmd_flatten(args)
     elif args.command == "dashboard":
         _cmd_dashboard(args)
+
+
+def _cmd_check_samples(args, cfg):
+    """Evaluate sample images and generate text descriptions."""
+    from afs.samples import describe_sample, describe_all_samples, list_samples
+
+    available = list_samples(cfg)
+    if not available:
+        print("  No samples found. Add images to the samples/ directory.")
+        return
+
+    LABELS = {"green": "GREAT", "blue": "OK", "orange": "LACKING", "red": "UNUSABLE"}
+
+    if args.name:
+        name = args.name.lower().strip()
+        if name not in available:
+            print(f"  Sample '{args.name}' not found. Available: {', '.join(available.keys())}")
+            return
+        print(f"\n  Checking: {name}/ ({available[name]} sample(s))...")
+        result = describe_sample(name, config=cfg)
+        if result.get("error"):
+            print(f"  Error: {result['error']}")
+        else:
+            label = LABELS.get(result.get("rating", ""), "?")
+            print(f"  [{label}] {result.get('description', 'no description')}")
+            print(f"  Suggestion: {result.get('suggestion', '')}\n")
+    else:
+        print(f"\n  Checking {len(available)} sample group(s)...\n")
+        results = describe_all_samples(config=cfg)
+        for r in results:
+            label = LABELS.get(r.get("rating", ""), "?")
+            count = r.get("sample_count", 0)
+            if r.get("error"):
+                print(f"  {r['name']}/ ({count}) — ERROR: {r['error']}")
+            else:
+                print(f"  {r['name']}/ ({count} sample{'s' if count != 1 else ''}) [{label}]")
+                print(f"    {r.get('description', 'no description')}")
+                print(f"    Suggestion: {r.get('suggestion', '')}")
+        print()
 
 
 def _cmd_dashboard(args):

@@ -87,7 +87,7 @@ def process_file(
     sanitize_images: bool = True,
     convert_webp: bool = True,
     config: dict | None = None,
-    face_samples: dict[str, list[str]] | None = None,
+    face_samples: dict[str, str] | None = None,
 ) -> FileResult:
     """Step 1: Analyze and name a single file. No moves except Tier 3 and errors."""
     from afs.photo import is_likely_photo, extract_photo_sequence
@@ -131,12 +131,14 @@ def process_file(
             return _move_to_errors(path, output_dir, dry_run, start,
                                    "preview generation failed", "preview_failed")
 
-        # Vision analysis (single retry on timeout)
+        # Vision analysis — sample descriptions included as text context (not multi-image)
         analysis = analyze_vision(preview_path, filename_hint=path.stem,
-                                  config=config, photo_hint=is_photo)
+                                  config=config, photo_hint=is_photo,
+                                  sample_descriptions=face_samples if face_samples else None)
         if analysis.get("error_type") == "model_timeout":
             analysis = analyze_vision(preview_path, filename_hint=path.stem,
-                                      config=config, photo_hint=is_photo)
+                                      config=config, photo_hint=is_photo,
+                                      sample_descriptions=face_samples if face_samples else None)
 
         if "error" in analysis:
             _cleanup(preview_path)
@@ -148,33 +150,31 @@ def process_file(
         phrase = analysis.get("phrase", "")
         keywords = analysis["keywords"]
         confidence = analysis["confidence"]
-        identified = None
+        identified = analysis.get("identified")
         result.method = "vision"
 
-        # Character identification (memes/cartoons — not photos)
-        if not is_photo and needs_identification(topic, keywords, confidence, config=config):
+        # Validate: identified must match a selected sample name (reject hallucinations)
+        if identified and face_samples:
+            valid_names = {n.lower() for n in face_samples.keys()}
+            if identified.lower() not in valid_names:
+                identified = None  # hallucinated name, discard
+
+        # If vision model identified a sample subject, prepend to phrase
+        if identified:
+            if identified.lower() not in phrase.lower():
+                phrase = f"{identified} {phrase}".strip()
+            if identified.lower() not in [kw.lower() for kw in keywords]:
+                keywords.insert(0, identified.lower())
+                keywords = keywords[:5]
+            confidence = max(confidence, 0.8)
+
+        # Character identification fallback (if no sample match and generic result)
+        if not identified and not is_photo and needs_identification(topic, keywords, confidence, config=config):
             char_name = identify_character(preview_path, config=config)
             if char_name:
                 identified = char_name
                 phrase, keywords = enhance_with_character(phrase, keywords, char_name)
                 confidence = max(confidence, 0.7)
-
-        # Sample identification (any file type when samples are loaded)
-        if face_samples:
-            from afs.faces import identify_faces
-            matched_names = identify_faces(preview_path, face_samples, config=config)
-            if matched_names:
-                identified = ", ".join(matched_names)
-                # Prepend names to phrase
-                names_str = " and ".join(matched_names)
-                if names_str.lower() not in phrase.lower():
-                    phrase = f"{names_str} {phrase}".strip()
-                # Also update keywords for Step 2
-                for name in reversed(matched_names):
-                    if name.lower() not in [kw.lower() for kw in keywords]:
-                        keywords.insert(0, name.lower())
-                keywords = keywords[:5]
-                confidence = max(confidence, 0.8)
 
         # Photo sequence: append to phrase (always at end for consistent naming)
         if is_photo:
@@ -313,15 +313,12 @@ def _process_batch_inner(
     else:
         prior_files, prior_timestamp = _load_prior_manifest(output_dir)
 
-    # Load samples (only selected ones — if none selected, skip identification)
-    face_samples: dict[str, list[str]] = {}
+    # Load sample descriptions (text, not images) for identification
+    face_samples: dict[str, str] = {}  # {name: description_text}
     selected_samples = cfg.get("processing", {}).get("selected_samples", [])
     if cfg.get("processing", {}).get("identify_faces", True) and selected_samples:
-        from afs.faces import load_face_samples
-        all_samples = load_face_samples(config=cfg)
-        # Filter to only selected samples
-        selected_lower = {s.lower() for s in selected_samples}
-        face_samples = {k: v for k, v in all_samples.items() if k in selected_lower}
+        from afs.samples import load_sample_descriptions
+        face_samples = load_sample_descriptions(config=cfg, selected=selected_samples)
 
     # Filter out already-sorted files
     new_files = []

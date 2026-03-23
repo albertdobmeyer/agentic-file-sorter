@@ -36,6 +36,7 @@ def analyze_vision(
     filename_hint: str = "",
     config: dict | None = None,
     photo_hint: bool = False,
+    sample_descriptions: dict[str, str] | None = None,
 ) -> dict:
     """Analyze a preview image using the vision model.
 
@@ -76,14 +77,31 @@ def analyze_vision(
             "If the photo is dark/blurry with no discernible content, use just one keyword like 'dark' or 'blurry'.\n"
         )
 
+    # Sample descriptions: text-only identification context
+    sample_context = ""
+    if sample_descriptions:
+        lines = []
+        for name, desc in sample_descriptions.items():
+            lines.append(f"  - {name}: {desc}")
+        sample_block = "\n".join(lines)
+        sample_context = (
+            f"\nKNOWN SUBJECTS (identify if any appear in this image):\n"
+            f"{sample_block}\n"
+            f"If you recognize any of these SPECIFIC subjects, set \"identified\" to their name.\n"
+        )
+
+    identified_field = ""
+    if sample_descriptions:
+        identified_field = '\n  "identified": "name of recognized subject or null",'
+
     prompt = f"""Analyze this image and respond with ONLY a JSON object (no other text):
 {{
   "topic": "single PLURAL word — the broad category (e.g. politics, animals, science, vehicles, memes, comics, games, sports, architecture, nature, food, religion, mythology, history, finance, technology, education, emotions, celebrities, maps, code, documents, music, configs)",
   "phrase": "a short natural description (2-7 words) for a filename",
-  "keywords": ["2-4 topic words for folder classification"],
+  "keywords": ["2-4 topic words for folder classification"],{identified_field}
   "confidence": 0.0 to 1.0
 }}
-{filename_context}{photo_context}
+{filename_context}{photo_context}{sample_context}
 CRITICAL RULES:
 - topic MUST be PLURAL and lowercase (animals not animal, comics not comic)
 - "phrase" is a NATURAL DESCRIPTION like a human would name the file:
@@ -141,10 +159,18 @@ CRITICAL RULES:
     # Fallback: if no phrase but has keywords, construct a basic phrase
     if not phrase and keywords:
         phrase = " ".join(str(k) for k in keywords[:5])
+    # Extract identified subject (from sample descriptions)
+    identified = data.get("identified", None)
+    if identified and isinstance(identified, str) and identified.lower() not in ("null", "none", ""):
+        identified = identified.lower().strip()
+    else:
+        identified = None
+
     return {
         "topic": topic.lower().strip(),
         "phrase": phrase,
         "keywords": [str(k) for k in keywords],
+        "identified": identified,
         "confidence": float(data.get("confidence", 0.0)),
     }
 
