@@ -57,7 +57,7 @@ body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; b
 .section-header { font-size: 13px; text-transform: uppercase; letter-spacing: 0.5px; color: var(--fg2); margin-bottom: 12px; cursor: pointer; display: flex; align-items: center; gap: 8px; user-select: none; }
 .section-header .chevron { transition: transform 0.2s; font-size: 10px; }
 .section-header .chevron.collapsed { transform: rotate(-90deg); }
-.section-body { overflow: hidden; transition: max-height 0.3s ease; }
+.section-body { overflow: visible; transition: max-height 0.3s ease; }
 .section-body.collapsed { max-height: 0 !important; overflow: hidden; }
 
 /* Form grid */
@@ -132,8 +132,28 @@ body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; b
 .face-thumbs { display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 10px; min-height: 40px; }
 .face-thumb { position: relative; width: 64px; height: 64px; border-radius: var(--radius); overflow: hidden; border: 1px solid var(--border); }
 .face-thumb img { width: 100%; height: 100%; object-fit: cover; }
-.face-thumb .thumb-delete { position: absolute; top: 2px; right: 2px; background: rgba(0,0,0,0.7); color: var(--red); border: none; border-radius: 50%; width: 18px; height: 18px; font-size: 12px; cursor: pointer; display: none; align-items: center; justify-content: center; line-height: 1; }
-.face-thumb:hover .thumb-delete { display: flex; }
+.face-thumb .thumb-delete { position: absolute; top: 2px; right: 2px; background: rgba(0,0,0,0.7); color: var(--red); border: none; border-radius: 50%; width: 18px; height: 18px; font-size: 12px; cursor: pointer; display: flex; align-items: center; justify-content: center; line-height: 1; opacity: 0.7; }
+.face-thumb .thumb-delete:hover { opacity: 1; background: var(--red); color: #fff; }
+.tooltip { position: relative; display: inline-block; margin-left: 4px; cursor: help; color: var(--fg2); font-size: 12px; z-index: 1000; }
+.tooltip:hover::after { content: attr(data-tip); position: absolute; bottom: 120%; left: 50%; transform: translateX(-50%); background: var(--bg4); color: var(--fg); padding: 8px 12px; border-radius: var(--radius); font-size: 12px; white-space: normal; z-index: 10000; width: 280px; border: 1px solid var(--border); text-transform: none; letter-spacing: normal; line-height: 1.4; box-shadow: 0 4px 12px rgba(0,0,0,0.3); pointer-events: none; }
+.help-text { color: var(--fg2); font-size: 12px; margin-bottom: 12px; line-height: 1.5; }
+.modal-overlay { position: fixed; top: 0; left: 0; right: 0; bottom: 0; background: rgba(0,0,0,0.6); z-index: 5000; display: flex; align-items: center; justify-content: center; }
+.folder-picker { background: var(--bg2); border: 1px solid var(--border); border-radius: var(--radius); width: 560px; max-height: 80vh; display: flex; flex-direction: column; }
+.fp-header { display: flex; justify-content: space-between; align-items: center; padding: 16px 20px; border-bottom: 1px solid var(--border); }
+.fp-header h3 { font-size: 15px; font-weight: 600; margin: 0; color: var(--fg); }
+.fp-breadcrumb { padding: 10px 20px; font-size: 12px; color: var(--accent); word-break: break-all; border-bottom: 1px solid var(--border); background: var(--bg); }
+.fp-drives { padding: 8px 20px; display: flex; gap: 6px; flex-wrap: wrap; border-bottom: 1px solid var(--border); }
+.fp-drives:empty { display: none; }
+.fp-drive { padding: 4px 10px; background: var(--bg3); border: 1px solid var(--border); border-radius: var(--radius); font-size: 12px; cursor: pointer; color: var(--fg); font-family: monospace; }
+.fp-drive:hover { background: var(--bg4); }
+.fp-drive.active { border-color: var(--accent); color: var(--accent); }
+.fp-list { flex: 1; overflow-y: auto; max-height: 400px; padding: 4px 0; }
+.fp-item { padding: 8px 20px; cursor: pointer; display: flex; align-items: center; gap: 8px; font-size: 13px; color: var(--fg); }
+.fp-item:hover { background: var(--bg3); }
+.fp-item-icon { color: var(--amber); font-size: 14px; width: 18px; text-align: center; }
+.fp-item-up { color: var(--fg2); font-style: italic; }
+.fp-info { padding: 8px 20px; font-size: 11px; color: var(--fg2); border-top: 1px solid var(--border); }
+.fp-actions { display: flex; justify-content: flex-end; gap: 8px; padding: 12px 20px; border-top: 1px solid var(--border); }
 .empty-state { text-align: center; padding: 60px 20px; color: var(--fg2); }
 .empty-state p { margin-bottom: 16px; }
 
@@ -209,18 +229,18 @@ body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; b
     <div class="section-body">
       <div class="form-grid">
         <div class="form-group full-width">
-          <label for="cfg-ollama-url">Ollama URL</label>
+          <label for="cfg-ollama-url">Ollama URL <span class="tooltip" data-tip="The URL where your Ollama server is running. Default: localhost:11434">?</span></label>
           <div class="input-row">
             <input type="text" id="cfg-ollama-url" style="flex:1">
             <button class="btn btn-test" onclick="testConnection()">Test Connection</button>
           </div>
         </div>
         <div class="form-group">
-          <label for="cfg-vision-model">Vision Model</label>
+          <label for="cfg-vision-model">Vision Model <span class="tooltip" data-tip="Ollama model for Step 1 (file naming). Analyzes images to generate keywords. Larger models = better naming.">?</span></label>
           <select id="cfg-vision-model"></select>
         </div>
         <div class="form-group">
-          <label for="cfg-text-model">Text Model</label>
+          <label for="cfg-text-model">Text Model <span class="tooltip" data-tip="Ollama model for Step 2 (folder consolidation + file assignment). Any reasoning/text model works.">?</span></label>
           <select id="cfg-text-model"></select>
         </div>
         <div class="form-group">
@@ -252,7 +272,7 @@ body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; b
           </div>
         </div>
         <div class="form-group">
-          <label for="cfg-keep-alive">Keep Alive</label>
+          <label for="cfg-keep-alive">Keep Alive <span class="tooltip" data-tip="How long to keep models loaded in GPU memory between calls. e.g. '30m', '1h', '0' (unload immediately)">?</span></label>
           <input type="text" id="cfg-keep-alive" placeholder="e.g. 30m, 1h, 0">
         </div>
       </div>
@@ -267,7 +287,7 @@ body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; b
     <div class="section-body">
       <div class="form-grid">
         <div class="form-group">
-          <label>Sanitize Images (CDR)</label>
+          <label>Sanitize Images (CDR) <span class="tooltip" data-tip="Re-render images through PIL to strip metadata, EXIF, and embedded payloads. Safe default for untrusted downloaded files.">?</span></label>
           <div class="toggle-wrap">
             <label class="toggle">
               <input type="checkbox" id="cfg-sanitize-images">
@@ -277,7 +297,7 @@ body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; b
           </div>
         </div>
         <div class="form-group">
-          <label>Convert WebP</label>
+          <label>Convert WebP <span class="tooltip" data-tip="Convert WebP images to JPG during CDR re-rendering.">?</span></label>
           <div class="toggle-wrap">
             <label class="toggle">
               <input type="checkbox" id="cfg-convert-webp">
@@ -287,25 +307,25 @@ body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; b
           </div>
         </div>
         <div class="form-group">
-          <label for="cfg-chunk-size">Chunk Size</label>
+          <label for="cfg-chunk-size">Chunk Size <span class="tooltip" data-tip="Files per reasoning model call in Step 2. Lower = more calls but more reliable. Default: 30.">?</span></label>
           <input type="number" id="cfg-chunk-size" min="1" max="200">
         </div>
         <div class="form-group">
-          <label>Confidence Threshold</label>
+          <label>Confidence Threshold <span class="tooltip" data-tip="Below this threshold, a second character identification pass runs. Lower = more aggressive identification.">?</span></label>
           <div class="range-wrap">
             <input type="range" id="cfg-confidence-threshold" min="0" max="1" step="0.05">
             <span class="range-value" id="val-confidence-threshold">0.50</span>
           </div>
         </div>
         <div class="form-group">
-          <label for="cfg-photo-threshold-mp">Photo Threshold</label>
+          <label for="cfg-photo-threshold-mp">Photo Threshold <span class="tooltip" data-tip="Images above this megapixel count are detected as camera photos and CDR-skipped. Memes are typically &lt;2MP, phones 8MP+.">?</span></label>
           <div class="input-with-suffix">
             <input type="number" id="cfg-photo-threshold-mp" min="0" max="100" step="0.5">
             <span class="suffix">MP</span>
           </div>
         </div>
         <div class="form-group">
-          <label>Skip CDR for Photos</label>
+          <label>Skip CDR for Photos <span class="tooltip" data-tip="Auto-detect camera photos (EXIF, resolution, filename) and skip CDR to preserve original quality and metadata.">?</span></label>
           <div class="toggle-wrap">
             <label class="toggle">
               <input type="checkbox" id="cfg-skip-cdr-photos">
@@ -315,7 +335,7 @@ body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; b
           </div>
         </div>
         <div class="form-group">
-          <label>Identify Faces</label>
+          <label>Identify Faces <span class="tooltip" data-tip="When enabled and face samples exist, the vision model identifies named people in camera photos.">?</span></label>
           <div class="toggle-wrap">
             <label class="toggle">
               <input type="checkbox" id="cfg-identify-faces">
@@ -336,15 +356,15 @@ body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; b
     <div class="section-body">
       <div class="form-grid">
         <div class="form-group">
-          <label for="cfg-max-topics">Max Topics</label>
+          <label for="cfg-max-topics">Max Topics <span class="tooltip" data-tip="Maximum number of topic folders the reasoning model can create. Excess topics get merged into the closest match.">?</span></label>
           <input type="number" id="cfg-max-topics" min="1" max="100">
         </div>
         <div class="form-group">
-          <label for="cfg-max-topic-words">Max Topic Words</label>
+          <label for="cfg-max-topic-words">Max Topic Words <span class="tooltip" data-tip="Maximum words in a folder name. e.g. 2 = 'reaction-memes', not 'funny-reaction-meme-pics'.">?</span></label>
           <input type="number" id="cfg-max-topic-words" min="1" max="5">
         </div>
         <div class="form-group">
-          <label>Cleanup Empty Folders</label>
+          <label>Cleanup Empty Folders <span class="tooltip" data-tip="Remove empty folders after files are moved out during sorting or consolidation.">?</span></label>
           <div class="toggle-wrap">
             <label class="toggle">
               <input type="checkbox" id="cfg-cleanup-empty-folders">
@@ -354,20 +374,20 @@ body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; b
           </div>
         </div>
         <div class="form-group">
-          <label for="cfg-photo-sorting">Photo Sorting</label>
+          <label for="cfg-photo-sorting">Photo Sorting <span class="tooltip" data-tip="'Flat' keeps photos renamed in-place (no subfolders). 'Folders' sorts them into topic folders like memes.">?</span></label>
           <select id="cfg-photo-sorting">
             <option value="flat">Flat</option>
             <option value="folders">Folders</option>
           </select>
         </div>
         <div class="form-group full-width">
-          <label>Custom Folders</label>
+          <label>Custom Folders <span class="tooltip" data-tip="Force files with matching keywords into a specific folder. e.g. 'biz' with triggers 'business, stock, finance'.">?</span></label>
           <p style="font-size:11px;color:var(--fg3);margin-bottom:8px;">Folder name and comma-separated trigger keywords</p>
           <div class="kv-editor" id="custom-folders-editor"></div>
           <button class="btn btn-sm kv-add" onclick="addCustomFolderRow()" style="margin-top:8px;">+ Add Folder</button>
         </div>
         <div class="form-group full-width">
-          <label>Folder Aliases</label>
+          <label>Folder Aliases <span class="tooltip" data-tip="Map shorthand names to canonical folders. e.g. 'pol' maps to 'politics'. Applied during folder consolidation.">?</span></label>
           <p style="font-size:11px;color:var(--fg3);margin-bottom:8px;">Alias maps to canonical folder name</p>
           <div class="kv-editor" id="folder-aliases-editor"></div>
           <button class="btn btn-sm kv-add" onclick="addAliasRow()" style="margin-top:8px;">+ Add Alias</button>
@@ -387,10 +407,15 @@ body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; b
 
 <!-- Faces Tab -->
 <div class="container tab-content" id="tab-faces">
-  <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:16px;">
+  <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px;">
     <h2 style="font-size:16px;font-weight:600;">Face Samples</h2>
     <button class="btn btn-primary" onclick="addPerson()">+ Add Person</button>
   </div>
+  <p class="help-text">
+    Upload clear, close-up face photos for each person you want AFS to recognize in camera photos.
+    Use well-lit frontal shots. Multiple samples per person improve accuracy (different angles, lighting, hair styles).
+    The person's name becomes part of the filename when they are identified.
+  </p>
   <div id="faces-container"></div>
 </div>
 
@@ -400,11 +425,17 @@ body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; b
     <div class="form-grid" style="margin-bottom:16px;">
       <div class="form-group full-width">
         <label for="run-input">Input Directory</label>
-        <input type="text" id="run-input" placeholder="C:\Users\...\Downloads\memes">
+        <div class="input-row">
+          <input type="text" id="run-input" placeholder="C:\Users\...\Downloads\memes" style="flex:1">
+          <button class="btn" onclick="openFolderPicker('run-input')">Browse</button>
+        </div>
       </div>
       <div class="form-group full-width">
         <label for="run-output">Output Directory (leave empty = same as input)</label>
-        <input type="text" id="run-output" placeholder="">
+        <div class="input-row">
+          <input type="text" id="run-output" placeholder="" style="flex:1">
+          <button class="btn" onclick="openFolderPicker('run-output')">Browse</button>
+        </div>
       </div>
     </div>
     <div class="run-options">
@@ -430,6 +461,24 @@ body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; b
     <h3>Last Run Summary</h3>
     <div class="summary-stats" id="summary-stats"></div>
     <div id="summary-folders"></div>
+  </div>
+</div>
+
+<!-- Folder Picker Modal -->
+<div class="modal-overlay" id="folder-picker-overlay" style="display:none;" onclick="closeFolderPicker()">
+  <div class="folder-picker" onclick="event.stopPropagation()">
+    <div class="fp-header">
+      <h3>Select Folder</h3>
+      <button class="btn" onclick="closeFolderPicker()" style="padding:4px 8px;">&times;</button>
+    </div>
+    <div class="fp-breadcrumb" id="fp-breadcrumb"></div>
+    <div class="fp-drives" id="fp-drives"></div>
+    <div class="fp-list" id="fp-list"></div>
+    <div class="fp-info" id="fp-info"></div>
+    <div class="fp-actions">
+      <button class="btn" onclick="closeFolderPicker()">Cancel</button>
+      <button class="btn btn-primary" onclick="selectFolder()">Select This Folder</button>
+    </div>
   </div>
 </div>
 
@@ -519,7 +568,7 @@ async function loadStatus() {
 
     // Ollama
     const olEl = document.getElementById('st-ollama');
-    if (s.ollama) {
+    if (s.ollama_online) {
       olEl.innerHTML = '<span class="dot dot-green"></span> Ollama: ONLINE';
     } else {
       olEl.innerHTML = '<span class="dot dot-red"></span> Ollama: OFFLINE';
@@ -531,15 +580,19 @@ async function loadStatus() {
 
     // ffmpeg
     const ffEl = document.getElementById('st-ffmpeg');
-    if (s.ffmpeg) {
-      ffEl.innerHTML = '<span class="dot dot-green"></span> ffmpeg';
+    if (s.ffmpeg_available) {
+      ffEl.innerHTML = '<span class="dot dot-green"></span> ffmpeg found';
     } else {
       ffEl.innerHTML = '<span class="dot dot-red"></span> ffmpeg missing';
     }
 
-    // Faces
-    const facesCount = s.face_samples || 0;
-    document.getElementById('st-faces').textContent = 'Faces: ' + facesCount + ' sample' + (facesCount !== 1 ? 's' : '');
+    // Faces (fetch separately)
+    try {
+      const fr = await fetch('/api/faces');
+      const faces = await fr.json();
+      const facesCount = Object.values(faces).reduce((sum, arr) => sum + arr.length, 0);
+      document.getElementById('st-faces').textContent = 'Faces: ' + facesCount + ' sample' + (facesCount !== 1 ? 's' : '');
+    } catch { document.getElementById('st-faces').textContent = 'Faces: 0 samples'; }
 
     // Version
     if (s.version) document.getElementById('version-label').textContent = 'v' + s.version;
@@ -788,10 +841,10 @@ async function testConnection() {
   try {
     const r = await fetch('/api/status');
     const s = await r.json();
-    if (s.ollama) {
-      toast('Ollama is reachable');
+    if (s.ollama_online) {
+      toast('Ollama is reachable (' + (s.models_available || []).length + ' models)');
     } else {
-      toast('Ollama is offline', 'error');
+      toast('Ollama is offline at ' + (s.ollama_url || 'unknown'), 'error');
     }
   } catch (e) {
     toast('Connection test failed: ' + e.message, 'error');
@@ -936,46 +989,37 @@ function startProcess() {
   let totalFiles = 0;
   let currentIndex = 0;
 
-  // Use fetch + ReadableStream for SSE
+  // Start the process via POST, then stream via EventSource (GET)
   fetch('/api/run', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(body)
-  }).then(response => {
-    const reader = response.body.getReader();
-    const decoder = new TextDecoder();
-    let buffer = '';
+  }).then(r => r.json()).then(data => {
+    if (data.error) { appendLog('Error: ' + data.error, 'log-error'); finishRun(); return; }
 
-    function read() {
-      reader.read().then(({ done, value }) => {
-        if (done) {
+    // Connect to SSE stream
+    const evtSource = new EventSource('/api/run/stream');
+    runEventSource = evtSource;
+
+    evtSource.onmessage = function(e) {
+      try {
+        const evt = JSON.parse(e.data);
+        handleRunEvent(evt);
+        if (evt.event === 'exit' || evt.event === 'error') {
+          evtSource.close();
+          runEventSource = null;
           finishRun();
-          return;
         }
-        buffer += decoder.decode(value, { stream: true });
-        const lines = buffer.split('\n');
-        buffer = lines.pop(); // keep incomplete line in buffer
+      } catch {
+        appendLog(e.data, 'log-info');
+      }
+    };
 
-        lines.forEach(line => {
-          line = line.trim();
-          if (line.startsWith('data: ')) {
-            const raw = line.slice(6);
-            try {
-              const evt = JSON.parse(raw);
-              handleRunEvent(evt);
-            } catch {
-              // not JSON, just show raw
-              appendLog(raw, 'log-info');
-            }
-          }
-        });
-        read();
-      }).catch(err => {
-        appendLog('Stream error: ' + err.message, 'log-error');
-        finishRun();
-      });
-    }
-    read();
+    evtSource.onerror = function() {
+      evtSource.close();
+      runEventSource = null;
+      finishRun();
+    };
   }).catch(err => {
     appendLog('Request failed: ' + err.message, 'log-error');
     finishRun();
@@ -1024,9 +1068,12 @@ function startProcess() {
         appendLog('  Chunk ' + evt.chunk + '/' + evt.of + ': ' + (evt.assigned || 0) + ' assigned, ' + (evt.folders_so_far || 0) + ' folders', 'log-info');
         break;
 
-      case 'step2-done':
-        appendLog('Sorting complete: ' + (evt.assignments || 0) + ' assigned, ' + (evt.folders_created || 0) + ' folders', 'log-success');
+      case 'step2-done': {
+        const assigned = evt.assignments ? Object.values(evt.assignments).reduce((a, b) => a + b, 0) : 0;
+        const folderNames = evt.assignments ? Object.keys(evt.assignments).join(', ') : '';
+        appendLog('Sorting complete: ' + assigned + ' files into ' + (evt.folders_created || 0) + ' folders (' + folderNames + ')', 'log-success');
         break;
+      }
 
       case 'step2-error':
         appendLog('Step 2 error: ' + (evt.error || 'unknown'), 'log-error');
@@ -1160,6 +1207,94 @@ async function loadManifestSummary(dir) {
 function statBox(label, value, color) {
   const style = color ? ' style="color:' + color + '"' : '';
   return '<div class="stat-item"><div class="stat-value"' + style + '>' + (value != null ? value : '--') + '</div><div class="stat-label">' + label + '</div></div>';
+}
+
+/* ──────────────── Folder Picker ──────────────── */
+let fpTargetInput = null;
+let fpCurrentDir = '';
+
+function openFolderPicker(inputId) {
+  fpTargetInput = document.getElementById(inputId);
+  const startDir = fpTargetInput.value || (navigator.platform.startsWith('Win') ? 'C:\\' : '/');
+  document.getElementById('folder-picker-overlay').style.display = 'flex';
+  browseTo(startDir);
+}
+
+function closeFolderPicker() {
+  document.getElementById('folder-picker-overlay').style.display = 'none';
+  fpTargetInput = null;
+}
+
+function selectFolder() {
+  if (fpTargetInput && fpCurrentDir) {
+    fpTargetInput.value = fpCurrentDir;
+  }
+  closeFolderPicker();
+}
+
+async function browseTo(dir) {
+  try {
+    const r = await fetch('/api/browse?dir=' + encodeURIComponent(dir));
+    const data = await r.json();
+    if (data.error) { toast(data.error, 'error'); return; }
+
+    fpCurrentDir = data.current;
+    document.getElementById('fp-breadcrumb').textContent = data.current;
+
+    // Drives (Windows only)
+    const drivesEl = document.getElementById('fp-drives');
+    drivesEl.innerHTML = '';
+    if (data.drives && data.drives.length > 0) {
+      for (const d of data.drives) {
+        const btn = document.createElement('button');
+        btn.className = 'fp-drive' + (data.current.toUpperCase().startsWith(d.charAt(0)) ? ' active' : '');
+        btn.textContent = d.charAt(0) + ':';
+        btn.addEventListener('click', () => browseTo(d));
+        drivesEl.appendChild(btn);
+      }
+    }
+
+    // Directory list
+    const listEl = document.getElementById('fp-list');
+    listEl.innerHTML = '';
+    const sep = data.current.includes('\\') ? '\\' : '/';
+
+    // Parent directory
+    if (data.parent) {
+      const upItem = document.createElement('div');
+      upItem.className = 'fp-item fp-item-up';
+      upItem.innerHTML = '<span class="fp-item-icon">&#8593;</span> ..';
+      upItem.addEventListener('click', () => browseTo(data.parent));
+      listEl.appendChild(upItem);
+    }
+
+    // Subdirectories
+    for (const d of data.directories) {
+      const fullPath = data.current + (data.current.endsWith(sep) ? '' : sep) + d;
+      const item = document.createElement('div');
+      item.className = 'fp-item';
+      item.innerHTML = '<span class="fp-item-icon">&#128193;</span> ' + esc(d);
+      item.addEventListener('click', () => browseTo(fullPath));
+      listEl.appendChild(item);
+    }
+
+    if (!data.parent && data.directories.length === 0) {
+      listEl.innerHTML = '<div style="padding:20px;color:var(--fg2);text-align:center;">Empty directory</div>';
+    }
+
+    // File count + directory count info
+    const info = data.fileCount;
+    const dirCount = data.directories.length;
+    let infoText = dirCount + ' folder' + (dirCount !== 1 ? 's' : '');
+    if (info.total > 0) {
+      infoText += ', ' + info.total + ' file' + (info.total !== 1 ? 's' : '');
+      if (info.images > 0) infoText += ' (' + info.images + ' images/videos)';
+    }
+    document.getElementById('fp-info').textContent = infoText;
+
+  } catch (e) {
+    toast('Browse failed: ' + e.message, 'error');
+  }
 }
 
 /* ──────────────── Init ──────────────── */

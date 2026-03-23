@@ -158,13 +158,16 @@ app.get('/api/faces/:name/:file/image', (req, res) => {
   else res.status(404).end();
 });
 
-// --- Run ---
+// --- Run (SSE via GET after POST start) ---
+
+let activeRun = null;
 
 app.post('/api/run', (req, res) => {
   const { input, output, dryRun, force, noSanitize, noConvertWebp, reface, maxFiles } = req.body;
   if (!input) return res.status(400).json({ error: 'input directory required' });
+  if (activeRun) return res.status(409).json({ error: 'A process is already running' });
 
-  const args = ['process', input, '--json'];
+  const args = [AFS_PY, '--json', 'process', input];
   if (output) args.push('-o', output);
   if (dryRun) args.push('--dry-run');
   if (force) args.push('--force');
@@ -173,21 +176,60 @@ app.post('/api/run', (req, res) => {
   if (reface) args.push('--reface');
   if (maxFiles > 0) args.push('--max-files', String(maxFiles));
 
-  res.writeHead(200, { 'Content-Type': 'text/event-stream', 'Cache-Control': 'no-cache', Connection: 'keep-alive' });
-
-  const proc = spawn('python', [AFS_PY, '--json', ...args.slice(1)], { cwd: ROOT });
+  console.log('Run:', 'python', args.join(' '));
+  const proc = spawn('python', args, { cwd: ROOT, shell: true });
+  activeRun = { proc, events: [], done: false, clients: [] };
 
   proc.stdout.on('data', d => {
     d.toString().split('\n').filter(Boolean).forEach(line => {
-      res.write(`data: ${line}\n\n`);
+      activeRun.events.push(line);
+      activeRun.clients.forEach(c => { try { c.write(`data: ${line}\n\n`); } catch {} });
     });
   });
-  proc.stderr.on('data', d => res.write(`data: ${JSON.stringify({ event: 'log', message: d.toString() })}\n\n`));
-  proc.on('close', code => {
-    res.write(`data: ${JSON.stringify({ event: 'exit', code })}\n\n`);
-    res.end();
+  proc.stderr.on('data', d => {
+    const msg = JSON.stringify({ event: 'log', message: d.toString().trim() });
+    activeRun.events.push(msg);
+    activeRun.clients.forEach(c => { try { c.write(`data: ${msg}\n\n`); } catch {} });
   });
-  req.on('close', () => proc.kill());
+  proc.on('error', e => {
+    console.log('Spawn error:', e.message);
+    const msg = JSON.stringify({ event: 'error', error: e.message });
+    activeRun.events.push(msg);
+    activeRun.done = true;
+  });
+  proc.on('close', code => {
+    console.log('Process exited:', code);
+    const msg = JSON.stringify({ event: 'exit', code });
+    activeRun.events.push(msg);
+    activeRun.clients.forEach(c => { try { c.write(`data: ${msg}\n\n`); c.end(); } catch {} });
+    activeRun.done = true;
+    activeRun.clients = [];
+    setTimeout(() => { activeRun = null; }, 5000);
+  });
+
+  res.json({ ok: true, started: true });
+});
+
+app.get('/api/run/stream', (req, res) => {
+  if (!activeRun) return res.status(404).json({ error: 'No active run' });
+
+  res.writeHead(200, { 'Content-Type': 'text/event-stream', 'Cache-Control': 'no-cache', Connection: 'keep-alive' });
+
+  // Send all buffered events first
+  for (const line of activeRun.events) {
+    res.write(`data: ${line}\n\n`);
+  }
+
+  if (activeRun.done) {
+    res.end();
+    return;
+  }
+
+  // Subscribe to future events
+  activeRun.clients.push(res);
+  req.on('close', () => {
+    if (activeRun) activeRun.clients = activeRun.clients.filter(c => c !== res);
+  });
 });
 
 app.post('/api/flatten', (req, res) => {
@@ -214,6 +256,54 @@ app.get('/api/manifest', (req, res) => {
     if (fs.existsSync(manifestPath)) res.json(JSON.parse(fs.readFileSync(manifestPath, 'utf-8')));
     else res.json(null);
   } catch { res.json(null); }
+});
+
+// --- Directory browser (for file picker) ---
+
+app.get('/api/browse', (req, res) => {
+  const dir = req.query.dir || (process.platform === 'win32' ? 'C:\\' : '/');
+  try {
+    const resolved = path.resolve(dir);
+    const entries = fs.readdirSync(resolved, { withFileTypes: true });
+    const dirs = [];
+    const fileCount = { total: 0, images: 0 };
+
+    for (const entry of entries) {
+      if (entry.name.startsWith('.')) continue;
+      if (entry.isDirectory()) {
+        dirs.push(entry.name);
+      } else if (entry.isFile()) {
+        fileCount.total++;
+        if (/\.(jpg|jpeg|png|gif|webp|bmp|tiff?|webm|mp4|mov|avi|mkv)$/i.test(entry.name)) {
+          fileCount.images++;
+        }
+      }
+    }
+
+    // Get parent directory
+    const parent = path.dirname(resolved);
+
+    // Get drive letters on Windows
+    let drives = [];
+    if (process.platform === 'win32') {
+      try {
+        const out = require('child_process').execSync('wmic logicaldisk get name', { encoding: 'utf-8' });
+        drives = out.split('\n').map(l => l.trim()).filter(l => /^[A-Z]:$/.test(l)).map(d => d + '\\');
+      } catch {
+        drives = ['C:\\'];
+      }
+    }
+
+    res.json({
+      current: resolved,
+      parent: parent !== resolved ? parent : null,
+      drives,
+      directories: dirs.sort((a, b) => a.localeCompare(b, undefined, { sensitivity: 'base' })),
+      fileCount,
+    });
+  } catch (e) {
+    res.status(400).json({ error: e.message, current: dir });
+  }
 });
 
 app.listen(PORT, () => console.log(`AFS Dashboard: http://localhost:${PORT}`));
