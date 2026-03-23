@@ -1,0 +1,89 @@
+{
+  "version": 1,
+  "subjects": {
+    "cartoon-clowns": {
+      "category": "sample",
+      "aliases": [
+        "cartoon-clowns"
+      ],
+      "description": "The image is a vibrant and colorful scene from the animated television show The Simpsons. It features four characters: Homer, Marge, Bart, and Lisa, each with their distinct clothing and hairstyles. They are in a room filled with various objects such as a couch, a TV, and a clock on the wall. The characters appear to be engaged in some sort of activity or conversation.",
+      "hashes": [
+        "0x80c080d06058f270f270f270f6e0c492e4e2aec02ef30fe30feb0fce0fe00e00"
+      ],
+      "hash_threshold": 15,
+      "sample_count": 1
+    },
+    "frog": {
+      "category": "sample",
+      "aliases": [
+        "frog"
+      ],
+      "description": "The image features a vibrant green frog with large, expressive eyes and a wide mouth, giving it a somewhat surprised or curious expression. The frog is set against a neutral background that does not distract from the subject.",
+      "hashes": [
+        "0xffffffffffffffc7ff83ffe3eff7c1ffe07ec07fc0cbc0038007800680008000"
+      ],
+      "hash_threshold": 15,
+      "sample_count": 1
+    },
+    "hatman": {
+      "category": "sample",
+      "aliases": [
+        "hatman"
+      ],
+      "description": "The image is a close-up photograph of a person with a serious expression. The individual appears to be a middle-aged adult male with fair skin, dark hair, and a mustache. He has a prominent nose and is wearing what seems to be a black top hat. His attire includes a white shirt and a dark tie, suggesting a formal or historical context. The background is nondescript and does not provide any additional context about the setting.",
+      "hashes": [
+        "0xe11821987f98ff99fffdcffedfdffffeffbf5f7f3fffbdff83e"
+      ],
+      "hash_threshold": 15,
+      "sample_count": 1
+    },
+    "lakshmi": {
+      "category": "sample",
+      "aliases": [
+        "lakshmi"
+      ],
+      "description": "The image is a colorful illustration of a deity figure, depicted in an artistic style with vibrant colors and intricate details. The central figure is a woman with long dark hair, wearing a pink outfit adorned with gold jewelry, holding two lotus flowers in her hands. She has a serene expression on her face and is seated cross-legged on a pink base. Her attire and the lotus flowers suggest a theme of purity and spirituality.",
+      "hashes": [
+        "0xfefffc7ff87ffd7ff937d01bf61bf78fe607e30381c3c181e8002010ff01ffe7"
+      ],
+      "hash_threshold": 15,
+      "sample_count": 1
+    },
+    "luigi": {
+      "category": "sample",
+      "aliases": [
+        "luigi"
+      ],
+      "description": "The image shows a person wearing a large, green Mario Kart costume with the character's iconic mustache. The individual is smiling and appears to be in a store or retail setting, as suggested by the background that includes shelves with various items.",
+      "hashes": [
+        "0x80000000e3f7efff1ff97ff93ff80000002097e01ff80ed807c00fe00fc21f80"
+      ],
+      "hash_threshold": 15,
+      "sample_count": 1
+    },
+    "paul": {
+      "category": "sample",
+      "aliases": [
+        "paul"
+      ],
+      "description": "The image is a portrait of a man with long hair and a beard, wearing sunglasses and a green jacket. He has a wide smile and appears to be in a good mood.",
+      "hashes": [
+        "0x7efff807f003ef01ffc1ffc03e008c203fe1e8e1e4010c008f803f80f800fe03"
+      ],
+      "hash_threshold": 15,
+      "sample_count": 1
+    },
+    "van-damme": {
+      "category": "sample",
+      "aliases": [
+        "van-damme"
+      ],
+      "description": "The image is a low-resolution photograph of a person who appears to be a young adult male with short hair, looking directly at the camera. He has a neutral expression and is wearing a dark top. The background is indistinct but seems to be an interior space with warm lighting.",
+      "hashes": [
+        "0x2000201e20032001a00080fc21fea0ff80ff80ff00ff80fd3fb93f227f767"
+      ],
+      "hash_threshold": 15,
+      "sample_count": 1
+    }
+  }
+}

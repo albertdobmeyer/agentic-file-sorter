@@ -128,14 +128,25 @@ def process_file(
             return _move_to_errors(path, output_dir, dry_run, start,
                                    "preview generation failed", "preview_failed")
 
-        # Vision analysis — sample descriptions included as text context (not multi-image)
+        # Layer 2: Perceptual hash matching (fast, no model call)
+        from afs.hashing import match_known_subjects, load_known_subjects
+        hash_db = load_known_subjects()
+        hash_matches = match_known_subjects(preview_path or path, hash_db) if hash_db.get("subjects") else []
+
+        # Merge sample descriptions with hash match hints
+        enriched_descriptions = dict(face_samples) if face_samples else {}
+        for match_name, match_dist, match_entry in hash_matches[:3]:
+            if match_name not in enriched_descriptions and match_entry.get("description"):
+                enriched_descriptions[match_name] = f"{match_entry['description']} [hash match, distance={match_dist}]"
+
+        # Vision analysis — all identification context included as text
         analysis = analyze_vision(preview_path, filename_hint=path.stem,
                                   config=config, photo_hint=is_photo,
-                                  sample_descriptions=face_samples if face_samples else None)
+                                  sample_descriptions=enriched_descriptions if enriched_descriptions else None)
         if analysis.get("error_type") == "model_timeout":
             analysis = analyze_vision(preview_path, filename_hint=path.stem,
                                       config=config, photo_hint=is_photo,
-                                      sample_descriptions=face_samples if face_samples else None)
+                                      sample_descriptions=enriched_descriptions if enriched_descriptions else None)
 
         if "error" in analysis:
             _cleanup(preview_path)
@@ -150,12 +161,12 @@ def process_file(
         identified = analysis.get("identified")
         result.method = "vision"
 
-        # Validate identified: if samples are selected, must match a sample name
-        # If no samples selected, trust built-in character/celebrity identification
-        if identified and face_samples:
-            valid_names = {n.lower() for n in face_samples.keys()}
+        # Validate identified: must match a selected sample, hash match, or known character
+        # If enriched_descriptions provided, identified must be in that set
+        if identified and enriched_descriptions:
+            valid_names = {n.lower() for n in enriched_descriptions.keys()}
             if identified.lower() not in valid_names:
-                identified = None  # not a selected sample — discard
+                identified = None  # not a known subject — discard hallucination
 
         # If identified, prepend to phrase and keywords
         if identified:
