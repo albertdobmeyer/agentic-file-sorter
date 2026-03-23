@@ -20,7 +20,8 @@
     "photo_threshold_mp": 4.0,
     "skip_cdr_photos": true,
     "faces_dir": "",
-    "identify_faces": true
+    "identify_faces": true,
+    "web_search_assist": false
   },
 
   "sorting": {

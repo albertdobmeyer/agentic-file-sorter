@@ -34,6 +34,7 @@ DEFAULTS = {
         "skip_cdr_photos": True,
         "faces_dir": "",
         "identify_faces": True,
+        "web_search_assist": False,
     },
     "sorting": {
         "max_topics": 25,
@@ -74,6 +75,7 @@ _ENV_MAP = {
     "SKIP_CDR_PHOTOS": ("processing", "skip_cdr_photos"),
     "FACES_DIR": ("processing", "faces_dir"),
     "IDENTIFY_FACES": ("processing", "identify_faces"),
+    "WEB_SEARCH_ASSIST": ("processing", "web_search_assist"),
     "PHOTO_SORTING": ("sorting", "photo_sorting"),
     "MAX_TOPICS": ("sorting", "max_topics"),
     "MAX_TOPIC_WORDS": ("sorting", "max_topic_words"),

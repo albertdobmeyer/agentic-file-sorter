@@ -177,6 +177,19 @@ def process_file(
                 keywords = keywords[:5]
             confidence = max(confidence, 0.8)
 
+        # Layer 4: Web search confirmation (optional, when uncertain)
+        if not identified and confidence < 0.7:
+            from afs.web_search import search_for_context
+            search_result = search_for_context(phrase, keywords, config=config)
+            if search_result and search_result.get("suggested_name"):
+                identified = search_result["suggested_name"]
+                if identified.lower() not in phrase.lower():
+                    phrase = f"{identified} {phrase}".strip()
+                if identified.lower() not in [kw.lower() for kw in keywords]:
+                    keywords.insert(0, identified.lower())
+                    keywords = keywords[:5]
+                confidence = max(confidence, 0.7)
+
         # Photo sequence: append to phrase (always at end for consistent naming)
         if is_photo:
             seq = extract_photo_sequence(path.stem)
