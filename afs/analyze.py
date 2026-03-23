@@ -79,22 +79,25 @@ def analyze_vision(
     prompt = f"""Analyze this image and respond with ONLY a JSON object (no other text):
 {{
   "topic": "single PLURAL word — the broad category (e.g. politics, animals, science, vehicles, memes, comics, games, sports, architecture, nature, food, religion, mythology, history, finance, technology, education, emotions, celebrities, maps, code, documents, music, configs)",
-  "keywords": ["2-5 SPECIFIC descriptive words for a good filename"],
+  "phrase": "a short natural description (2-7 words) for a filename",
+  "keywords": ["2-4 topic words for folder classification"],
   "confidence": 0.0 to 1.0
 }}
 {filename_context}{photo_context}
 CRITICAL RULES:
-- topic MUST be PLURAL (animals not animal, comics not comic)
-- If you recognize a SPECIFIC character (SpongeBob, Pepe, Mickey Mouse, Wojak, etc.), put their name in keywords
-- If you recognize a SPECIFIC person, put their name in keywords
-- Prefer SPECIFIC proper nouns over generic descriptions
-- NEVER use these as keywords: "image", "photo", "photograph", "photography", "camera", "picture", "person", "individual", "subject"
-- Instead of "person" use specific terms: "man", "woman", "child", "couple", "group", "crowd"
-- Each keyword must add UNIQUE information — no synonyms (e.g. "dark" not "dark, darkness, void, night")
-- Keywords should form a good filename when joined: ["spongebob", "birthday", "cake"] → spongebob-birthday-cake.jpg
-- Keep keywords SHORT (1-2 words each), max 5 keywords total
-- topic must be lowercase
-- If this looks like a text document or code, still analyze the CONTENT visible in the image"""
+- topic MUST be PLURAL and lowercase (animals not animal, comics not comic)
+- "phrase" is a NATURAL DESCRIPTION like a human would name the file:
+  GOOD: "shepherd sleeping under tree in alps", "cat wearing flower crown at festival"
+  BAD: "shepherd tree alps sleeping green", "cat flower crown festival"
+- Use connective words (in, at, with, under, on, of, and) to make the phrase read naturally
+- Structure the phrase as: [main subject] [action or relationship] [context or location]
+- If you recognize a SPECIFIC character (SpongeBob, Pepe, Wojak, etc.), START the phrase with their name
+- If you recognize a SPECIFIC person, START the phrase with their name
+- NEVER use these words in phrase or keywords: "image", "photo", "photograph", "picture", "person", "individual", "subject"
+- Instead of "person" use: "man", "woman", "child", "couple", "group", "crowd"
+- "keywords" are for folder classification ONLY — short topic words, NOT the filename
+- Each keyword must add UNIQUE information — no synonyms
+- If this looks like a text document or code, still analyze the CONTENT visible"""
 
     try:
         resp = requests.post(
@@ -125,9 +128,23 @@ CRITICAL RULES:
             "error": f"unparseable response: {raw[:200]}",
             "error_type": ERR_PARSE_FAILURE,
         }
+    # Safely extract fields — model may return wrong types
+    topic = data.get("topic", "unsorted")
+    if not isinstance(topic, str):
+        topic = str(topic) if topic else "unsorted"
+    phrase = data.get("phrase", "")
+    if not isinstance(phrase, str):
+        phrase = " ".join(phrase) if isinstance(phrase, list) else str(phrase) if phrase else ""
+    keywords = data.get("keywords", [])
+    if not isinstance(keywords, list):
+        keywords = [str(keywords)] if keywords else []
+    # Fallback: if no phrase but has keywords, construct a basic phrase
+    if not phrase and keywords:
+        phrase = " ".join(str(k) for k in keywords[:5])
     return {
-        "topic": data.get("topic", "unsorted").lower().strip(),
-        "keywords": data.get("keywords", []),
+        "topic": topic.lower().strip(),
+        "phrase": phrase,
+        "keywords": [str(k) for k in keywords],
         "confidence": float(data.get("confidence", 0.0)),
     }
 
@@ -225,18 +242,26 @@ def identify_character(
     return name
 
 
-def enhance_with_character(keywords: list[str], character_name: str) -> list[str]:
-    """Inject identified character name into keywords, replacing generic terms."""
-    name_parts = character_name.lower().split()
-    new_kw = list(name_parts)
+def enhance_with_character(
+    phrase: str, keywords: list[str], character_name: str,
+) -> tuple[str, list[str]]:
+    """Inject identified character name into phrase and keywords."""
+    name_lower = character_name.lower()
 
+    # Phrase: prepend character name if not already present
+    if name_lower not in phrase.lower():
+        phrase = f"{name_lower} {phrase}".strip()
+
+    # Keywords: replace generic terms with character name
+    name_parts = name_lower.split()
+    new_kw = list(name_parts)
     for kw in keywords:
         kw_lower = kw.lower()
         skip = any(kw_lower in term or term in kw_lower for term in GENERIC_TRIGGERS)
         if not skip and kw_lower not in new_kw:
             new_kw.append(kw_lower)
 
-    return new_kw[:5]
+    return phrase, new_kw[:5]
 
 
 def parse_json(text: str) -> dict:

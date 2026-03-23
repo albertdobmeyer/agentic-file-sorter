@@ -8,7 +8,7 @@ const app = express();
 const PORT = parseInt(process.argv.find((a, i) => process.argv[i - 1] === '--port') || '7860');
 const ROOT = path.resolve(__dirname, '..');
 const CONFIG_PATH = path.join(ROOT, 'afs-config.json');
-const FACES_DIR = path.join(ROOT, 'faces');
+const FACES_DIR = fs.existsSync(path.join(ROOT, 'samples')) ? path.join(ROOT, 'samples') : path.join(ROOT, 'faces');
 const AFS_PY = path.join(ROOT, 'afs.py');
 
 app.use(express.static(path.join(__dirname, 'public')));

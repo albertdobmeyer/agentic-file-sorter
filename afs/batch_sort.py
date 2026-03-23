@@ -113,9 +113,13 @@ def build_sort_prompt(
     for result in named_results:
         source = pathlib.Path(result.source)
         display_name = name_to_key.get(source.name, source.name)
-        normalized_kw = [normalize_topic(kw) for kw in result.keywords] if result.keywords else []
-        kw_str = ", ".join(normalized_kw) if normalized_kw else "no keywords"
-        file_lines.append(f'  "{display_name}": {kw_str}')
+        # Use phrase if available (more context for folder assignment), fall back to keywords
+        if hasattr(result, 'phrase') and result.phrase:
+            desc = result.phrase
+        else:
+            normalized_kw = [normalize_topic(kw) for kw in result.keywords] if result.keywords else []
+            desc = ", ".join(normalized_kw) if normalized_kw else "no description"
+        file_lines.append(f'  "{display_name}": {desc}')
 
     files_block = "\n".join(file_lines)
 
@@ -148,12 +152,13 @@ FILES TO SORT:
 RULES:
 1. Each file MUST appear in your response — do NOT skip any file
 2. Folder names: plural, kebab-case, max {max_topic_words} words (e.g. "animals", "reaction-memes")
-3. MAXIMUM {max_topics} topic folders total. If you would exceed this, merge into the closest existing folder
+3. MAXIMUM {max_topics} topic folders total. Fewer is better — merge aggressively
 4. "filtered" is RESERVED — never use it
 5. If existing folders are listed, ALWAYS reuse them. DO NOT create synonyms (e.g. if "politics" exists, do NOT create "government" or "campaigns")
 6. DO NOT create folders that mean the same thing. Merge: politics/government/campaigns → politics. animals/cats/pets → animals
 7. Prefer BROAD topics. "politics" not "election-campaigns". "animals" not "cute-dogs". "science" not "quantum-physics"
-8. If custom folders are listed, use them when keywords match any trigger word
+8. Every folder should have at LEAST 2 files. Do NOT create a folder for a single file — merge it into the closest existing folder instead
+9. If custom folders are listed, use them when keywords match any trigger word
 
 Respond with ONLY a JSON object mapping each filename to its folder:
 {{"filename1.ext": "topic-folder", "filename2.ext": "topic-folder"}}"""

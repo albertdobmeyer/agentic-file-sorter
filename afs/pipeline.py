@@ -95,6 +95,13 @@ def process_file(
     start = time.time()
     result = FileResult(source=str(path))
 
+    # Check if this file type should be grouped by extension (not analyzed)
+    cfg_sort = (config or {}).get("sorting", {})
+    group_by_type = set(cfg_sort.get("group_by_type", []))
+    ext_lower = path.suffix.lower()
+    if ext_lower in group_by_type:
+        return _move_to_filtered(path, output_dir, dry_run, start)
+
     tier = classify_tier(path)
     result.tier = tier
 
@@ -138,6 +145,7 @@ def process_file(
                                    analysis.get("error_type", "unhandled"))
 
         topic = analysis["topic"]
+        phrase = analysis.get("phrase", "")
         keywords = analysis["keywords"]
         confidence = analysis["confidence"]
         identified = None
@@ -148,26 +156,31 @@ def process_file(
             char_name = identify_character(preview_path, config=config)
             if char_name:
                 identified = char_name
-                keywords = enhance_with_character(keywords, char_name)
+                phrase, keywords = enhance_with_character(phrase, keywords, char_name)
                 confidence = max(confidence, 0.7)
 
-        # Face identification (photos only, when samples are available)
-        if is_photo and face_samples:
+        # Sample identification (any file type when samples are loaded)
+        if face_samples:
             from afs.faces import identify_faces
             matched_names = identify_faces(preview_path, face_samples, config=config)
             if matched_names:
                 identified = ", ".join(matched_names)
+                # Prepend names to phrase
+                names_str = " and ".join(matched_names)
+                if names_str.lower() not in phrase.lower():
+                    phrase = f"{names_str} {phrase}".strip()
+                # Also update keywords for Step 2
                 for name in reversed(matched_names):
                     if name.lower() not in [kw.lower() for kw in keywords]:
                         keywords.insert(0, name.lower())
                 keywords = keywords[:5]
                 confidence = max(confidence, 0.8)
 
-        # Photo sequence preservation (always last keyword for consistent naming)
+        # Photo sequence: append to phrase (always at end for consistent naming)
         if is_photo:
             seq = extract_photo_sequence(path.stem)
             if seq:
-                # Remove if already present (could be from filename hint), re-add at end
+                phrase = f"{phrase} {seq}".strip() if phrase else seq
                 keywords = [kw for kw in keywords if kw != seq]
                 keywords.append(seq)
 
@@ -176,6 +189,7 @@ def process_file(
         # Store analysis results — no folder matching, no moves
         result.status = "named"
         result.topic = topic
+        result.phrase = phrase
         result.keywords = keywords
         result.confidence = confidence
         result.identified = identified
@@ -504,11 +518,14 @@ def _process_batch_inner(
         flat_photos = [r for r in named_results if r.photo_detected]
         named_results = [r for r in named_results if not r.photo_detected]
 
-        from afs.naming import generate_name
+        from afs.naming import generate_name, generate_name_from_phrase
         for result in flat_photos:
             source = pathlib.Path(result.source)
             ext = source.suffix.lower()
-            semantic = generate_name(result.keywords, original_stem=source.stem)
+            if result.phrase:
+                semantic = generate_name_from_phrase(result.phrase, original_stem=source.stem)
+            else:
+                semantic = generate_name(result.keywords, original_stem=source.stem)
             if semantic == "unsorted" and result.photo_detected:
                 semantic = "photo"
             dest = source.parent / f"{semantic}{ext}"
@@ -600,7 +617,7 @@ def _process_batch_inner(
                     batch.filtered += 1
                     continue
 
-                dest = get_destination(source, normalized, result.keywords, output_dir)
+                dest = get_destination(source, normalized, result.keywords, output_dir, phrase=result.phrase)
                 moved = move_file(source, dest, dry_run=dry_run)
                 result.dest = str(dest)
                 result.status = "dry-run" if dry_run else ("moved" if moved else "renamed")
@@ -642,6 +659,10 @@ def _process_batch_inner(
             "files_moved": consolidation_result.files_moved,
             "files_resorted": len(consolidation_result.resort_files),
         }
+
+    # Clean up empty folders after all moves
+    if cfg.get("sorting", {}).get("cleanup_empty_folders", True) and not dry_run:
+        _cleanup_empty_folders(output_dir)
 
     _write_manifest(batch, input_dir, output_dir, sanitize_images, prior_files,
                     config=cfg, skipped=skipped, dry_run=dry_run, step="complete",
@@ -915,6 +936,7 @@ def _write_manifest(
         entry = {
             "source": source_name,
             "name": pathlib.Path(r.dest).name if r.dest else source_name,
+            "phrase": r.phrase,
             "keywords": r.keywords,
             "folder": r.folder,
             "status": r.status,
@@ -1025,6 +1047,17 @@ def _cleanup(path: pathlib.Path | None):
             path.unlink(missing_ok=True)
         except OSError:
             pass
+
+
+def _cleanup_empty_folders(output_dir: pathlib.Path):
+    """Remove empty subdirectories in the output directory."""
+    for d in sorted(output_dir.rglob("*"), key=lambda p: len(p.parts), reverse=True):
+        if d.is_dir() and d != output_dir:
+            try:
+                if not any(d.iterdir()):
+                    d.rmdir()
+            except OSError:
+                pass
 
 
 def _elapsed(start: float) -> int:

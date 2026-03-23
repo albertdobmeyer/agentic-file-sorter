@@ -188,9 +188,24 @@ def _encode_sample(path: pathlib.Path) -> str | None:
 
 
 def _get_faces_dir(config: dict | None = None) -> pathlib.Path:
-    """Resolve the faces directory from config or default."""
+    """Resolve the samples/faces directory from config or default.
+
+    Priority: config samples_dir > config faces_dir > samples/ > faces/
+    """
     cfg = config or {}
+    # New config key first
+    samples_dir = cfg.get("processing", {}).get("samples_dir", "")
+    if samples_dir:
+        return pathlib.Path(samples_dir)
+    # Legacy config key
     faces_dir = cfg.get("processing", {}).get("faces_dir", "")
     if faces_dir:
         return pathlib.Path(faces_dir)
-    return PROJECT_ROOT / "faces"
+    # Default: samples/ preferred, faces/ as fallback
+    samples_path = PROJECT_ROOT / "samples"
+    if samples_path.is_dir():
+        return samples_path
+    faces_path = PROJECT_ROOT / "faces"
+    if faces_path.is_dir():
+        return faces_path
+    return samples_path

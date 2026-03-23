@@ -7,5 +7,7 @@ build/
 .env
 faces/**
 !faces/.gitkeep
+samples/**
+!samples/.gitkeep
 .afs-manifest.json
 node_modules/

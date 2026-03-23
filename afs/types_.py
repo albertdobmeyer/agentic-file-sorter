@@ -15,6 +15,7 @@ class FileResult:
     dest: str | None = None
     status: str = "error"  # moved | renamed | dry-run | error
     topic: str = ""
+    phrase: str = ""  # natural-language descriptive phrase for filename
     keywords: list[str] = field(default_factory=list)
     confidence: float = 0.0
     method: str = ""  # vision | filtered

@@ -7,7 +7,7 @@ import pathlib
 import re
 import shutil
 
-from afs.naming import generate_name, deduplicate_path
+from afs.naming import generate_name, generate_name_from_phrase, deduplicate_path
 
 
 # Canonical topic mapping — normalizes singular→plural, merges synonyms (~80 entries)
@@ -80,13 +80,17 @@ def get_destination(
     topic: str,
     keywords: list[str],
     output_dir: pathlib.Path,
+    phrase: str = "",
 ) -> pathlib.Path:
     """Determine where a file should be moved.
 
     ALL files go into topic folders: output_dir/{topic}/{semantic-name}.ext
     """
     ext = source.suffix.lower()
-    semantic_name = generate_name(keywords, original_stem=source.stem)
+    if phrase:
+        semantic_name = generate_name_from_phrase(phrase, original_stem=source.stem)
+    else:
+        semantic_name = generate_name(keywords, original_stem=source.stem)
     normalized = normalize_topic(topic) if topic and topic != "unsorted" else "misc"
     folder = output_dir / normalized
     dest = folder / f"{semantic_name}{ext}"

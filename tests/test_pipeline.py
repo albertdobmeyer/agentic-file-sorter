@@ -286,7 +286,7 @@ class TestBuildSortPrompt:
     def test_no_keywords_shows_placeholder(self):
         results = [FileResult(source="/tmp/mystery.jpg", keywords=[])]
         prompt = build_sort_prompt(results, [])
-        assert "no keywords" in prompt
+        assert "no description" in prompt
 
 
 # --- Step 2 batch sort (mocked Ollama) ---

@@ -110,6 +110,71 @@ def generate_name(
     return "-".join(kw_slugs)
 
 
+# Words preserved as connective tissue in phrases
+CONNECTIVE_WORDS = {
+    "in", "at", "with", "under", "on", "of", "and", "the", "a", "an",
+    "by", "for", "to", "from", "near", "over", "through",
+}
+
+
+def generate_name_from_phrase(
+    phrase: str,
+    original_stem: str = "",
+    max_words: int = 7,
+) -> str:
+    """Generate a kebab-case filename from a natural-language phrase.
+
+    Preserves connective words for natural reading.
+    'shepherd sleeping under tree in alps' → 'shepherd-sleeping-under-tree-in-alps'
+
+    Falls back to generate_name() if phrase is empty.
+    """
+    if not phrase:
+        if original_stem:
+            return generate_name([], original_stem)
+        return "unsorted"
+
+    # Normalize: lowercase, keep only letters/numbers/spaces
+    phrase = phrase.lower().strip()
+    phrase = re.sub(r"[^a-z0-9\s]", "", phrase)
+
+    # Split into words
+    words = phrase.split()
+
+    # Filter meta-noise (but keep connectives)
+    filtered = []
+    for w in words:
+        if w in CONNECTIVE_WORDS:
+            filtered.append(w)
+        elif w in META_NOISE or w.isdigit() or len(w) <= 1:
+            continue
+        else:
+            filtered.append(w)
+
+    # Don't start or end with a connective
+    while filtered and filtered[0] in CONNECTIVE_WORDS:
+        filtered.pop(0)
+    while filtered and filtered[-1] in CONNECTIVE_WORDS:
+        filtered.pop()
+
+    # Enforce max words
+    if len(filtered) > max_words:
+        # Trim from end, but don't leave a trailing connective
+        filtered = filtered[:max_words]
+        while filtered and filtered[-1] in CONNECTIVE_WORDS:
+            filtered.pop()
+
+    # Deduplicate synonyms
+    filtered = _dedup_synonyms(filtered)
+
+    if not filtered:
+        if original_stem:
+            return generate_name([], original_stem)
+        return "unsorted"
+
+    return "-".join(filtered)
+
+
 def deduplicate_path(dest: Path) -> Path:
     """If dest exists, append -2, -3, etc. until unique."""
     if not dest.exists():
