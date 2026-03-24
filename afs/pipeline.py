@@ -27,7 +27,7 @@ from afs.analyze import (
 )
 from afs.naming import deduplicate_path
 from afs.sorting import normalize_topic, get_destination, move_file, scan_existing_folders
-from afs.batch_sort import plan_folders, assign_files_procedurally, verify_folder_assignments
+from afs.batch_sort import plan_folders, assign_files, resolve_ambiguous, verify_folders
 from afs.consolidate import consolidate_folders, execute_merges, RESORT_SENTINEL
 
 
@@ -345,6 +345,22 @@ def _process_batch_inner(
                 if result.get("description"):
                     face_samples[name_lower] = result["description"]
 
+    # Check if Step 2 needs to resume (files named but never sorted/moved)
+    _step2_resume = False
+    _manifest_data = None
+    if not force:
+        manifest_path = output_dir / ".afs-manifest.json"
+        if manifest_path.exists():
+            try:
+                _manifest_data = json.loads(manifest_path.read_text(encoding="utf-8"))
+                # If there are named-but-not-moved files, Step 2 needs to run
+                unsorted = sum(1 for f in _manifest_data.get("files", [])
+                               if f.get("status") == "named" and f.get("keywords"))
+                if unsorted > 0:
+                    _step2_resume = True
+            except Exception:
+                pass
+
     # Filter out already-sorted files
     new_files = []
     skipped = 0
@@ -568,34 +584,59 @@ def _process_batch_inner(
             result.folder = "photos"
             batch.moved += 1
 
-    # === Step 2b: Plan folders (ONE reasoning call) → Assign procedurally → Verify ===
+    # Resume Step 2 if Step 1 was completed but Step 2 never ran
+    if not named_results and _step2_resume:
+        for entry in _manifest_data.get("files", []):
+            if entry.get("status") == "named" and entry.get("keywords"):
+                # Resolve source to absolute path
+                source_name = entry.get("source", "")
+                source_path = input_dir / source_name
+                if not source_path.exists():
+                    source_path = output_dir / source_name
+                r = FileResult(source=str(source_path))
+                r.status = "named"
+                r.phrase = entry.get("phrase", "")
+                r.keywords = entry.get("keywords", [])
+                r.topic = entry.get("topic", "")
+                r.confidence = entry.get("confidence", 0.0)
+                r.identified = entry.get("identified")
+                r.tier = entry.get("tier", 1)
+                r.photo_detected = entry.get("photo_detected", False)
+                r.method = "vision"
+                named_results.append(r)
+                batch.results.append(r)
+        batch.total = len(named_results)
+        if on_event and named_results:
+            on_event({"event": "log", "message": f"Resuming Step 2 with {len(named_results)} files from prior Step 1"})
+
+    # === Step 2b: Plan → Assign → Resolve → Verify ===
     if named_results:
         _warm_model(text_model, config, on_event)
 
         if on_event:
-            on_event({
-                "event": "step2-start",
-                "files": len(named_results),
-                "prior_folders": len(prior_folders),
-            })
+            on_event({"event": "step2-start", "files": len(named_results), "prior_folders": len(prior_folders)})
 
-        # Step 2b-PLAN: One reasoning call to create folder plan from keyword frequencies
-        folder_plan = plan_folders(named_results, prior_folders, config=cfg, on_event=on_event)
+        # Pass 1: Plan folders (ONE model call)
+        folders = plan_folders(named_results, prior_folders, config=cfg, on_event=on_event)
 
-        # Step 2b-ASSIGN: Procedural Python keyword matching (zero model calls)
-        assignments = assign_files_procedurally(named_results, folder_plan)
+        # Pass 2: Assign files (Python string matching, ZERO model calls)
+        assignments = assign_files(named_results, folders)
 
         misc_count = sum(1 for f in assignments.values() if f == "misc")
         if on_event:
-            on_event({
-                "event": "step2b-assign",
-                "assigned": len(assignments),
-                "misc": misc_count,
-                "folders": len(set(assignments.values())),
-            })
+            on_event({"event": "step2b-assign", "assigned": len(assignments), "misc": misc_count, "folders": len(set(assignments.values()))})
 
-        # Step 2c-VERIFY: One reasoning call to merge redundant folders (optional)
-        merge_map = verify_folder_assignments(assignments, config=cfg, on_event=on_event)
+        # Pass 3: Resolve ambiguous (model calls for misc files only, if >10%)
+        if misc_count > len(assignments) * 0.1 and misc_count > 5:
+            misc_results = [r for r in named_results if assignments.get(pathlib.Path(r.source).name) == "misc"]
+            resolved = resolve_ambiguous(misc_results, folders, config=cfg, on_event=on_event)
+            assignments.update(resolved)
+            new_misc = sum(1 for f in assignments.values() if f == "misc")
+            if on_event and resolved:
+                on_event({"event": "step2b-resolve", "resolved": len(resolved), "remaining_misc": new_misc})
+
+        # Pass 4: Verify (ONE model call to merge redundant folders)
+        merge_map = verify_folders(assignments, config=cfg, on_event=on_event)
         if merge_map:
             assignments = {f: merge_map.get(folder, folder) for f, folder in assignments.items()}
 

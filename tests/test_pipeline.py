@@ -27,7 +27,7 @@ from afs.pipeline import (
     process_file,
     process_batch,
 )
-from afs.batch_sort import build_sort_prompt, step2_batch_sort
+from afs.batch_sort import plan_folders, assign_files, resolve_ambiguous, verify_folders
 
 
 # --- Fixtures ---
@@ -247,133 +247,72 @@ class TestResortAwareness:
         assert "filtered" not in folders
 
 
-# --- Step 2 prompt building ---
+# (TestBuildSortPrompt removed — old chunked sort prompt is no longer used)
 
 
-class TestBuildSortPrompt:
-    def test_basic_prompt_structure(self):
+# --- Step 2: Plan + Assign (v3) ---
+
+
+class TestStep2PlanAssign:
+    def test_assign_files_basic(self):
+        """Files matched to folders by keyword overlap."""
         results = [
-            FileResult(source="/tmp/cat.jpg", keywords=["cat", "orange", "sleeping"]),
-            FileResult(source="/tmp/meme.jpg", keywords=["funny", "text"]),
+            FileResult(source="/tmp/cat-sleeping.jpg", keywords=["cat", "sleeping"], topic="animals"),
+            FileResult(source="/tmp/pepe-meme.jpg", keywords=["meme", "frog"], topic="memes"),
         ]
-        prompt = build_sort_prompt(results, [])
-        assert "FILES TO SORT:" in prompt
-        assert "cat.jpg" in prompt
-        assert "meme.jpg" in prompt
-        assert "RULES:" in prompt
-        assert '"filtered"' in prompt  # protected folder warning
+        folders = ["animals", "memes", "misc"]
+        assignments = assign_files(results, folders)
+        assert assignments["cat-sleeping.jpg"] == "animals"
+        assert assignments["pepe-meme.jpg"] == "memes"
 
-    def test_includes_existing_folders(self):
-        results = [FileResult(source="/tmp/new.jpg", keywords=["cat"])]
-        prompt = build_sort_prompt(results, ["animals", "memes"])
-        assert "EXISTING FOLDERS" in prompt
-        assert "animals" in prompt
-        assert "memes" in prompt
+    def test_assign_files_uses_topic_fallback(self):
+        """Files with no keyword match fall back to Step 1 topic."""
+        results = [
+            FileResult(source="/tmp/weird-thing.jpg", keywords=["bizarre"], topic="science"),
+        ]
+        folders = ["science", "misc"]
+        assignments = assign_files(results, folders)
+        assert assignments["weird-thing.jpg"] == "science"
 
-    def test_no_existing_folders_section_when_empty(self):
-        results = [FileResult(source="/tmp/new.jpg", keywords=["cat"])]
-        prompt = build_sort_prompt(results, [])
-        assert "EXISTING FOLDERS" not in prompt
+    def test_assign_files_misc_default(self):
+        """Files with no match go to misc."""
+        results = [
+            FileResult(source="/tmp/unknown.jpg", keywords=["xyz"], topic="unsorted"),
+        ]
+        folders = ["animals", "misc"]
+        assignments = assign_files(results, folders)
+        assert assignments["unknown.jpg"] == "misc"
 
-    def test_keywords_are_normalized(self):
-        """FR-004: keywords must be pre-processed via normalize_topic()."""
-        results = [FileResult(source="/tmp/cat.jpg", keywords=["cat", "vehicle"])]
-        prompt = build_sort_prompt(results, [])
-        # "cat" normalizes to "animals", "vehicle" normalizes to "vehicles"
-        assert "animals" in prompt
-        assert "vehicles" in prompt
-
-    def test_no_keywords_shows_placeholder(self):
-        results = [FileResult(source="/tmp/mystery.jpg", keywords=[])]
-        prompt = build_sort_prompt(results, [])
-        assert "no description" in prompt
-
-
-# --- Step 2 batch sort (mocked Ollama) ---
-
-
-class TestStep2BatchSort:
     @patch("afs.batch_sort.requests.post")
-    def test_successful_assignment(self, mock_post):
+    def test_plan_folders_parses_array(self, mock_post):
+        """Plan folders accepts JSON array response."""
         mock_resp = MagicMock()
-        mock_resp.json.return_value = {
-            "response": '{"cat.jpg": "animals", "meme.jpg": "memes"}'
-        }
+        mock_resp.json.return_value = {"response": '["animals", "memes", "science"]'}
         mock_resp.raise_for_status = MagicMock()
         mock_post.return_value = mock_resp
 
         results = [
             FileResult(source="/tmp/cat.jpg", keywords=["cat"]),
-            FileResult(source="/tmp/meme.jpg", keywords=["funny"]),
+            FileResult(source="/tmp/cat2.jpg", keywords=["cat"]),
+            FileResult(source="/tmp/cat3.jpg", keywords=["cat"]),
         ]
-        assignments = step2_batch_sort(results, [])
-        assert assignments == {"cat.jpg": "animals", "meme.jpg": "memes"}
+        folders = plan_folders(results, [])
+        assert "animals" in folders
+        assert "memes" in folders
+        assert "misc" in folders
 
     @patch("afs.batch_sort.requests.post")
-    def test_normalizes_folder_names(self, mock_post):
-        mock_resp = MagicMock()
-        mock_resp.json.return_value = {
-            "response": '{"cat.jpg": "Cat Photos"}'
-        }
-        mock_resp.raise_for_status = MagicMock()
-        mock_post.return_value = mock_resp
-
-        results = [FileResult(source="/tmp/cat.jpg", keywords=["cat"])]
-        assignments = step2_batch_sort(results, [])
-        # "Cat Photos" should be normalized to kebab-case
-        assert assignments["cat.jpg"] == "cat-photos"
-
-    @patch("afs.batch_sort.requests.post")
-    def test_returns_none_on_network_error(self, mock_post):
+    def test_plan_folders_fallback_on_error(self, mock_post):
+        """Plan folders returns fallback on network error."""
         mock_post.side_effect = Exception("connection refused")
-        results = [FileResult(source="/tmp/cat.jpg", keywords=["cat"])]
-        assert step2_batch_sort(results, []) is None
-
-    @patch("afs.batch_sort.requests.post")
-    def test_returns_none_on_invalid_json(self, mock_post):
-        mock_resp = MagicMock()
-        mock_resp.json.return_value = {"response": "I cannot do that"}
-        mock_resp.raise_for_status = MagicMock()
-        mock_post.return_value = mock_resp
-
-        results = [FileResult(source="/tmp/cat.jpg", keywords=["cat"])]
-        assert step2_batch_sort(results, []) is None
-
-    @patch("afs.batch_sort.requests.post")
-    def test_returns_none_on_empty_response(self, mock_post):
-        mock_resp = MagicMock()
-        mock_resp.json.return_value = {"response": "{}"}
-        mock_resp.raise_for_status = MagicMock()
-        mock_post.return_value = mock_resp
-
-        results = [FileResult(source="/tmp/cat.jpg", keywords=["cat"])]
-        assert step2_batch_sort(results, []) is None
-
-    @patch("afs.batch_sort.requests.post")
-    def test_handles_markdown_fenced_json(self, mock_post):
-        mock_resp = MagicMock()
-        mock_resp.json.return_value = {
-            "response": '```json\n{"cat.jpg": "animals"}\n```'
-        }
-        mock_resp.raise_for_status = MagicMock()
-        mock_post.return_value = mock_resp
-
-        results = [FileResult(source="/tmp/cat.jpg", keywords=["cat"])]
-        assignments = step2_batch_sort(results, [])
-        assert assignments == {"cat.jpg": "animals"}
-
-    @patch("afs.batch_sort.requests.post")
-    def test_handles_think_tags(self, mock_post):
-        mock_resp = MagicMock()
-        mock_resp.json.return_value = {
-            "response": '<think>Let me think...</think>{"cat.jpg": "animals"}'
-        }
-        mock_resp.raise_for_status = MagicMock()
-        mock_post.return_value = mock_resp
-
-        results = [FileResult(source="/tmp/cat.jpg", keywords=["cat"])]
-        assignments = step2_batch_sort(results, [])
-        assert assignments == {"cat.jpg": "animals"}
+        results = [
+            FileResult(source="/tmp/cat.jpg", keywords=["cat"]),
+            FileResult(source="/tmp/cat2.jpg", keywords=["cat"]),
+            FileResult(source="/tmp/cat3.jpg", keywords=["cat"]),
+        ]
+        folders = plan_folders(results, [])
+        assert isinstance(folders, list)
+        assert "misc" in folders
 
 
 # --- Manifest ---
@@ -596,8 +535,8 @@ class TestProcessFile:
 
 
 class TestProcessBatch:
-    @patch("afs.pipeline.verify_folder_assignments")
-    @patch("afs.pipeline.assign_files_procedurally")
+    @patch("afs.pipeline.verify_folders")
+    @patch("afs.pipeline.assign_files")
     @patch("afs.pipeline.plan_folders")
     @patch("afs.pipeline.process_file")
     def test_two_step_flow(self, mock_pf, mock_plan, mock_assign, mock_verify, tmp_path):
@@ -630,8 +569,8 @@ class TestProcessBatch:
         assert "step2-done" in event_types
         assert "done" in event_types
 
-    @patch("afs.pipeline.verify_folder_assignments")
-    @patch("afs.pipeline.assign_files_procedurally")
+    @patch("afs.pipeline.verify_folders")
+    @patch("afs.pipeline.assign_files")
     @patch("afs.pipeline.plan_folders")
     @patch("afs.pipeline.process_file")
     def test_step2_assigns_to_misc(self, mock_pf, mock_plan, mock_assign, mock_verify, tmp_path):
@@ -653,8 +592,8 @@ class TestProcessBatch:
         assert batch.moved == 1
         assert batch.results[0].folder == "misc"
 
-    @patch("afs.pipeline.verify_folder_assignments")
-    @patch("afs.pipeline.assign_files_procedurally")
+    @patch("afs.pipeline.verify_folders")
+    @patch("afs.pipeline.assign_files")
     @patch("afs.pipeline.plan_folders")
     @patch("afs.pipeline.process_file")
     def test_filtered_protection(self, mock_pf, mock_plan, mock_assign, mock_verify, tmp_path):
@@ -676,8 +615,8 @@ class TestProcessBatch:
         # "filtered" assignment gets redirected to "misc"
         assert batch.results[0].folder == "misc"
 
-    @patch("afs.pipeline.verify_folder_assignments")
-    @patch("afs.pipeline.assign_files_procedurally")
+    @patch("afs.pipeline.verify_folders")
+    @patch("afs.pipeline.assign_files")
     @patch("afs.pipeline.plan_folders")
     @patch("afs.pipeline.process_file")
     def test_unassigned_file_goes_to_misc(self, mock_pf, mock_plan, mock_assign, mock_verify, tmp_path):
