@@ -40,6 +40,7 @@ def plan_folders(
     text_ctx = models.get("text_ctx", 8192)
     keep_alive = models.get("keep_alive", "30m")
     max_topics = sorting.get("max_topics", 25)
+    max_topic_words = sorting.get("max_topic_words", 2)
 
     # Extract unique keywords (appearing 3+ times)
     kw_freq: Counter = Counter()
@@ -64,9 +65,11 @@ def plan_folders(
 These keywords describe {len(named_results)} image files:
 {kw_list}
 {prior_hint}
-Create {max_topics} or fewer topic folder names to organize these files.
-Folder names: plural, kebab-case, max 2 words. Prefer broad topics.
-Include "misc" for anything that doesn't fit.
+Create 20-{max_topics} broad topic folders to organize files with these keywords.
+Folder names: plural, kebab-case, max {max_topic_words} words.
+
+GOOD folders: broad categories like animals, memes, politics, science, nature, technology, religion, art
+BAD folders: narrow keywords like frog, chart, moon, costume, statue, night
 
 Respond with ONLY a JSON array:
 ["animals", "memes", "politics", "science", "nature", ...]"""
@@ -138,6 +141,8 @@ def assign_files(
     folders: list[str],
 ) -> dict[str, str]:
     """Python string matching. ZERO model calls. Returns {filename: folder}."""
+    from afs.sorting import TOPIC_CANONICAL
+
     # Build word→folder index for fast lookup
     folder_words: dict[str, str] = {}
     for folder in folders:
@@ -145,11 +150,19 @@ def assign_files(
             if part and part != "misc":
                 folder_words[part] = folder
 
+    # Build canonical→folder index (maps synonyms to matching folders)
+    canonical_to_folder: dict[str, str] = {}
+    for raw_word, canonical in TOPIC_CANONICAL.items():
+        canonical_norm = normalize_topic(canonical)
+        if canonical_norm in folders:
+            canonical_to_folder[raw_word] = canonical_norm
+            canonical_to_folder[canonical_norm] = canonical_norm
+
     assignments: dict[str, str] = {}
 
     for result in named_results:
         source_name = pathlib.Path(result.source).name
-        best_folder = _match_file_to_folder(result, folders, folder_words)
+        best_folder = _match_file_to_folder(result, folders, folder_words, canonical_to_folder)
         assignments[source_name] = best_folder
 
     return assignments
@@ -159,6 +172,7 @@ def _match_file_to_folder(
     result: FileResult,
     folders: list[str],
     folder_words: dict[str, str],
+    canonical_to_folder: dict[str, str],
 ) -> str:
     """Score each folder for a file. Returns best match or 'misc'."""
     scores: dict[str, int] = defaultdict(int)
@@ -175,6 +189,11 @@ def _match_file_to_folder(
         # Exact match: word == folder
         if word in folders:
             scores[word] += 3
+            continue
+
+        # Canonical mapping: word maps to a known folder via TOPIC_CANONICAL
+        if word in canonical_to_folder:
+            scores[canonical_to_folder[word]] += 3
             continue
 
         # Word is part of a folder name
@@ -296,11 +315,14 @@ def verify_folders(
 
     summary = ", ".join(f"{f}: {c}" for f, c in folder_counts.most_common())
 
+    total_files = len(assignments)
     prompt = f"""/no_think
-Review these folders (name: file count):
+Review these {len(folder_counts)} folders for {total_files} files:
 {summary}
 
-Merge any redundant or overlapping folders. Folders with <3 files should merge into the closest larger one. "misc" should not be merged.
+ONLY merge folders that are truly redundant or synonymous (e.g. "comics" and "cartoons" → "cartoons").
+Do NOT merge folders just because they have few files — small folders are fine.
+"misc" and "filtered" should never be merged.
 
 Respond with ONLY a JSON merge map: {{"source": "target", ...}}
 Return empty {{}} if no changes needed."""
