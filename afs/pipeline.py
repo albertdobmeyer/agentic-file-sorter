@@ -644,7 +644,19 @@ def _process_batch_inner(
         assignment_summary = defaultdict(int)
         for result in named_results:
             source = pathlib.Path(result.source)
-            folder = assignments.get(source.name, "misc")
+            if not source.exists():
+                # File may have been moved by consolidation — try finding it
+                found = list(output_dir.rglob(source.name))
+                if found:
+                    source = found[0]
+                else:
+                    result.status = "error"
+                    result.error = "file not found after consolidation"
+                    result.error_type = "file_read_error"
+                    batch.errors += 1
+                    continue
+
+            folder = assignments.get(pathlib.Path(result.source).name, "misc")
 
             normalized = normalize_topic(folder)
             if normalized == "filtered":
