@@ -596,44 +596,46 @@ class TestProcessFile:
 
 
 class TestProcessBatch:
-    @patch("afs.pipeline.step2_batch_sort")
+    @patch("afs.pipeline.verify_folder_assignments")
+    @patch("afs.pipeline.assign_files_procedurally")
+    @patch("afs.pipeline.plan_folders")
     @patch("afs.pipeline.process_file")
-    def test_two_step_flow(self, mock_pf, mock_step2, tmp_path):
-        """Verify Step 1 runs for all files, then Step 2 runs once."""
-        # Setup: 2 files
+    def test_two_step_flow(self, mock_pf, mock_plan, mock_assign, mock_verify, tmp_path):
+        """Verify Step 1 runs for all files, then Step 2 plan+assign runs."""
         (tmp_path / "a.jpg").write_bytes(b"\xff\xd8")
         (tmp_path / "b.jpg").write_bytes(b"\xff\xd8")
         out = tmp_path / "output"
         out.mkdir()
 
-        # Step 1 returns "named" results
         mock_pf.side_effect = [
             FileResult(source=str(tmp_path / "a.jpg"), status="named",
                        keywords=["cat"], topic="animals", method="vision", tier=1),
             FileResult(source=str(tmp_path / "b.jpg"), status="named",
                        keywords=["dog"], topic="animals", method="vision", tier=1),
         ]
-        # Step 2 returns assignments
-        mock_step2.return_value = {"a.jpg": "animals", "b.jpg": "animals"}
+        mock_plan.return_value = {"animals": ["cat", "dog"]}
+        mock_assign.return_value = {"a.jpg": "animals", "b.jpg": "animals"}
+        mock_verify.return_value = {}
 
         events = []
         batch = process_batch(tmp_path, out, dry_run=True, on_event=events.append)
 
-        # Step 1 called for each file
         assert mock_pf.call_count == 2
-        # Step 2 called exactly once
-        assert mock_step2.call_count == 1
+        assert mock_plan.call_count == 1
+        assert mock_assign.call_count == 1
 
-        # Check events
         event_types = [e["event"] for e in events]
         assert "start" in event_types
         assert "step2-start" in event_types
         assert "step2-done" in event_types
         assert "done" in event_types
 
-    @patch("afs.pipeline.step2_batch_sort")
+    @patch("afs.pipeline.verify_folder_assignments")
+    @patch("afs.pipeline.assign_files_procedurally")
+    @patch("afs.pipeline.plan_folders")
     @patch("afs.pipeline.process_file")
-    def test_step2_failure_routes_to_errors(self, mock_pf, mock_step2, tmp_path):
+    def test_step2_assigns_to_misc(self, mock_pf, mock_plan, mock_assign, mock_verify, tmp_path):
+        """Files with no keyword match go to misc."""
         (tmp_path / "a.jpg").write_bytes(b"\xff\xd8")
         out = tmp_path / "output"
         out.mkdir()
@@ -642,41 +644,21 @@ class TestProcessBatch:
             source=str(tmp_path / "a.jpg"), status="named",
             keywords=["cat"], topic="animals", method="vision", tier=1,
         )
-        mock_step2.return_value = None  # Step 2 failed
-
-        events = []
-        batch = process_batch(tmp_path, out, dry_run=True, on_event=events.append)
-
-        assert batch.errors == 1
-        assert batch.filtered == 1
-        event_types = [e["event"] for e in events]
-        assert "step2-error" in event_types
-
-    @patch("afs.pipeline.step2_batch_sort")
-    @patch("afs.pipeline.process_file")
-    def test_filtered_protection(self, mock_pf, mock_step2, tmp_path):
-        """Files assigned to 'filtered' by reasoning model must be rejected."""
-        (tmp_path / "a.jpg").write_bytes(b"\xff\xd8")
-        out = tmp_path / "output"
-        out.mkdir()
-
-        mock_pf.return_value = FileResult(
-            source=str(tmp_path / "a.jpg"), status="named",
-            keywords=["cat"], topic="animals", method="vision", tier=1,
-        )
-        mock_step2.return_value = {"a.jpg": "filtered"}
+        mock_plan.return_value = {"misc": []}
+        mock_assign.return_value = {"a.jpg": "misc"}
+        mock_verify.return_value = {}
 
         batch = process_batch(tmp_path, out, dry_run=True, on_event=lambda e: None)
 
-        assert batch.errors == 1
-        assert batch.filtered == 1
-        result = batch.results[0]
-        assert "reserved folder name" in result.error
+        assert batch.moved == 1
+        assert batch.results[0].folder == "misc"
 
-    @patch("afs.pipeline.step2_batch_sort")
+    @patch("afs.pipeline.verify_folder_assignments")
+    @patch("afs.pipeline.assign_files_procedurally")
+    @patch("afs.pipeline.plan_folders")
     @patch("afs.pipeline.process_file")
-    def test_unassigned_file_routes_to_errors(self, mock_pf, mock_step2, tmp_path):
-        """Files not in Step 2 response must route to filtered/errors/."""
+    def test_filtered_protection(self, mock_pf, mock_plan, mock_assign, mock_verify, tmp_path):
+        """Files assigned to 'filtered' by plan must be redirected to misc."""
         (tmp_path / "a.jpg").write_bytes(b"\xff\xd8")
         out = tmp_path / "output"
         out.mkdir()
@@ -685,14 +667,39 @@ class TestProcessBatch:
             source=str(tmp_path / "a.jpg"), status="named",
             keywords=["cat"], topic="animals", method="vision", tier=1,
         )
-        # Step 2 returns assignments but doesn't include our file
-        mock_step2.return_value = {"other.jpg": "animals"}
+        mock_plan.return_value = {"animals": ["cat"]}
+        mock_assign.return_value = {"a.jpg": "filtered"}
+        mock_verify.return_value = {}
 
         batch = process_batch(tmp_path, out, dry_run=True, on_event=lambda e: None)
 
-        assert batch.errors == 1
-        result = batch.results[0]
-        assert "no folder assigned" in result.error
+        # "filtered" assignment gets redirected to "misc"
+        assert batch.results[0].folder == "misc"
+
+    @patch("afs.pipeline.verify_folder_assignments")
+    @patch("afs.pipeline.assign_files_procedurally")
+    @patch("afs.pipeline.plan_folders")
+    @patch("afs.pipeline.process_file")
+    def test_unassigned_file_goes_to_misc(self, mock_pf, mock_plan, mock_assign, mock_verify, tmp_path):
+        """Files not in assignments default to misc."""
+        (tmp_path / "a.jpg").write_bytes(b"\xff\xd8")
+        out = tmp_path / "output"
+        out.mkdir()
+
+        mock_pf.return_value = FileResult(
+            source=str(tmp_path / "a.jpg"), status="named",
+            keywords=["cat"], topic="animals", method="vision", tier=1,
+        )
+        mock_plan.return_value = {"animals": ["dog"]}
+        # File not matched — goes to misc by default
+        mock_assign.return_value = {}
+        mock_verify.return_value = {}
+
+        batch = process_batch(tmp_path, out, dry_run=True, on_event=lambda e: None)
+
+        # Unassigned file defaults to "misc"
+        assert batch.moved == 1
+        assert batch.results[0].folder == "misc"
 
     @patch("afs.pipeline.process_file")
     def test_all_tier3_skips_step2(self, mock_pf, tmp_path):

@@ -353,17 +353,36 @@ def _print_human(event: dict):
               f"{event['filtered']} filtered{skip_msg} ({event['ms']}ms)\n")
     elif ev == "step2-start":
         count = event.get("files", 0)
-        chunks = event.get("chunks", 1)
         prior = event.get("prior_folders", 0)
-        chunk_msg = f" in {chunks} chunks" if chunks > 1 else ""
         prior_msg = f" ({prior} existing folders)" if prior else ""
-        print(f"\n  Step 2: Sorting {count} files into folders{chunk_msg}{prior_msg}...")
-    elif ev == "step2-chunk":
-        print(f"    Chunk {event['chunk']}/{event['of']}: {event['assigned']} assigned, {event['folders_so_far']} folders")
+        print(f"\n  Step 2: Sorting {count} files{prior_msg}...")
+    elif ev == "step2b-plan":
+        status = event.get("status", "")
+        if status == "calling":
+            print(f"    Planning folders from {event.get('keywords', 0)} keywords...")
+        elif status == "done":
+            names = event.get("folder_names", [])
+            print(f"    Planned {event.get('folders', 0)} folders: {', '.join(names[:10])}")
+            if len(names) > 10:
+                print(f"      ... and {len(names) - 10} more")
+        elif status == "error":
+            print(f"    Folder planning failed: {event.get('error', '')}")
+    elif ev == "step2b-assign":
+        misc = event.get("misc", 0)
+        misc_msg = f" ({misc} to misc)" if misc else ""
+        print(f"    Assigned {event.get('assigned', 0)} files to {event.get('folders', 0)} folders{misc_msg}")
+    elif ev == "step2c-verify":
+        status = event.get("status", "")
+        if status == "done":
+            merges = event.get("merges", 0)
+            if merges:
+                print(f"    Verification: {merges} folder merges applied")
+            else:
+                print(f"    Verification: no changes needed")
     elif ev == "step2-done":
         assignments = event.get("assignments", {})
         folders_created = event.get("folders_created", 0)
-        print(f"  Step 2 done: {folders_created} folders assigned")
+        print(f"  Step 2 done: {folders_created} folders")
         for folder, count in sorted(assignments.items()):
             print(f"    {folder}: {count} files")
     elif ev == "step2a-start":

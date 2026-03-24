@@ -27,7 +27,7 @@ from afs.analyze import (
 )
 from afs.naming import deduplicate_path
 from afs.sorting import normalize_topic, get_destination, move_file, scan_existing_folders
-from afs.batch_sort import step2_batch_sort, _single_call
+from afs.batch_sort import plan_folders, assign_files_procedurally, verify_folder_assignments
 from afs.consolidate import consolidate_folders, execute_merges, RESORT_SENTINEL
 
 
@@ -568,97 +568,62 @@ def _process_batch_inner(
             result.folder = "photos"
             batch.moved += 1
 
-    # === Step 2b: Batch sort — file assignment (reasoning model, chunked) ===
+    # === Step 2b: Plan folders (ONE reasoning call) → Assign procedurally → Verify ===
     if named_results:
         _warm_model(text_model, config, on_event)
 
-        chunks = (len(named_results) + chunk_size - 1) // chunk_size
         if on_event:
             on_event({
                 "event": "step2-start",
                 "files": len(named_results),
-                "chunks": chunks,
                 "prior_folders": len(prior_folders),
             })
 
-        assignments = step2_batch_sort(
-            named_results, prior_folders, config=cfg, on_event=on_event,
-        )
+        # Step 2b-PLAN: One reasoning call to create folder plan from keyword frequencies
+        folder_plan = plan_folders(named_results, prior_folders, config=cfg, on_event=on_event)
 
-        if assignments is None:
-            err_type = getattr(_single_call, "last_error_type", None) or "unknown"
-            err_msg = getattr(_single_call, "last_error", None) or "reasoning model returned no valid assignments"
-            if on_event:
-                on_event({
-                    "event": "step2-error",
-                    "error": err_msg,
-                    "error_type": err_type,
-                })
-            for result in named_results:
-                source = pathlib.Path(result.source)
-                dest = output_dir / "filtered" / "errors" / source.name
-                dest = deduplicate_path(dest)
-                move_file(source, dest, dry_run=dry_run)
-                result.dest = str(dest)
-                result.status = "dry-run" if dry_run else "moved"
-                result.topic = "filtered"
-                result.error = f"step 2 failure: {err_msg}"
-                result.error_type = err_type
-                result.folder = ""
-                batch.errors += 1
-                batch.filtered += 1
-            _write_manifest(batch, input_dir, output_dir, sanitize_images, prior_files,
-                            config=cfg, skipped=skipped, dry_run=dry_run, step="sorting")
-        else:
-            assignment_summary = defaultdict(int)
-            for result in named_results:
-                source = pathlib.Path(result.source)
-                folder = assignments.get(source.name)
+        # Step 2b-ASSIGN: Procedural Python keyword matching (zero model calls)
+        assignments = assign_files_procedurally(named_results, folder_plan)
 
-                if not folder:
-                    dest = output_dir / "filtered" / "errors" / source.name
-                    dest = deduplicate_path(dest)
-                    move_file(source, dest, dry_run=dry_run)
-                    result.dest = str(dest)
-                    result.status = "dry-run" if dry_run else "moved"
-                    result.topic = "filtered"
-                    result.error = "step 2: no folder assigned"
-                    result.error_type = "unassigned"
-                    result.folder = ""
-                    batch.errors += 1
-                    batch.filtered += 1
-                    continue
+        misc_count = sum(1 for f in assignments.values() if f == "misc")
+        if on_event:
+            on_event({
+                "event": "step2b-assign",
+                "assigned": len(assignments),
+                "misc": misc_count,
+                "folders": len(set(assignments.values())),
+            })
 
-                normalized = normalize_topic(folder)
-                if normalized == "filtered":
-                    dest = output_dir / "filtered" / "errors" / source.name
-                    dest = deduplicate_path(dest)
-                    move_file(source, dest, dry_run=dry_run)
-                    result.dest = str(dest)
-                    result.status = "dry-run" if dry_run else "moved"
-                    result.topic = "filtered"
-                    result.error = "step 2: reserved folder name 'filtered'"
-                    result.error_type = "reserved_name"
-                    result.folder = ""
-                    batch.errors += 1
-                    batch.filtered += 1
-                    continue
+        # Step 2c-VERIFY: One reasoning call to merge redundant folders (optional)
+        merge_map = verify_folder_assignments(assignments, config=cfg, on_event=on_event)
+        if merge_map:
+            assignments = {f: merge_map.get(folder, folder) for f, folder in assignments.items()}
 
-                dest = get_destination(source, normalized, result.keywords, output_dir, phrase=result.phrase)
-                moved = move_file(source, dest, dry_run=dry_run)
-                result.dest = str(dest)
-                result.status = "dry-run" if dry_run else ("moved" if moved else "renamed")
-                result.topic = normalized
-                result.folder = normalized
-                batch.moved += 1
-                assignment_summary[normalized] += 1
+        # Move files to assigned folders
+        assignment_summary = defaultdict(int)
+        for result in named_results:
+            source = pathlib.Path(result.source)
+            folder = assignments.get(source.name, "misc")
 
-            if on_event:
-                on_event({
-                    "event": "step2-done",
-                    "assignments": dict(assignment_summary),
-                    "folders_created": len(assignment_summary),
-                })
+            normalized = normalize_topic(folder)
+            if normalized == "filtered":
+                normalized = "misc"
+
+            dest = get_destination(source, normalized, result.keywords, output_dir, phrase=result.phrase)
+            moved = move_file(source, dest, dry_run=dry_run)
+            result.dest = str(dest)
+            result.status = "dry-run" if dry_run else ("moved" if moved else "renamed")
+            result.topic = normalized
+            result.folder = normalized
+            batch.moved += 1
+            assignment_summary[normalized] += 1
+
+        if on_event:
+            on_event({
+                "event": "step2-done",
+                "assignments": dict(assignment_summary),
+                "folders_created": len(assignment_summary),
+            })
 
         _write_manifest(batch, input_dir, output_dir, sanitize_images, prior_files,
                         config=cfg, skipped=skipped, dry_run=dry_run, step="sorting")
