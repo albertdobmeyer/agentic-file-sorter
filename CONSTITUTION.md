@@ -2,7 +2,7 @@
 
 **Agentic File Sorter: Secure Semantic Naming for Downloaded Media**
 
-Version: 1.1 | Date: 2026-03-18 | Author: Albert K. | AKD Automation Solutions
+Version: 1.1 | Date: 2026-03-18 | Author: Albert K. | AKD APP BREWING
 
 Status: RATIFIED — All implementation decisions must trace back to this document.
 
